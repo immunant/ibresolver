@@ -1,5 +1,5 @@
 CXX = clang++
-CFLAGS = -fPIC
+CXXFLAGS = -fPIC
 LDFLAGS = -shared -lstdc++
 PLUGIN = libiresolver.so
 SRC = plugin.cpp
@@ -9,7 +9,7 @@ $(PLUGIN): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 %.o: %.cpp
-	$(CXX) -c $(CFLAGS) $< -o $@
+	$(CXX) -c $(CXXFLAGS) $< -o $@
 
 clean:
 	rm -f $(PLUGIN) $(OBJ)
