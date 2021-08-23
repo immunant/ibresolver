@@ -10,15 +10,18 @@ typedef struct addr_range {
     uint64_t end_addr;
 } addr_range;
 
-uint64_t indirect_callsite = 0;
+static uint64_t indirect_callsite = 0;
 
-static void tb_last_insn(struct qemu_plugin_tb* tb, addr_range *last_insn) {
+static addr_range tb_last_insn(struct qemu_plugin_tb* tb) {
     uint64_t last_idx = qemu_plugin_tb_n_insns(tb) - 1;
     struct qemu_plugin_insn* insn = qemu_plugin_tb_get_insn(tb, last_idx);
     uint64_t start = qemu_plugin_insn_vaddr(insn);
-    uint64_t end = start + qemu_plugin_insn_size(insn);
-    last_insn->start_addr = start;
-    last_insn->end_addr = end;
+    uint64_t end = start + qemu_plugin_insn_size(insn) - 1;
+    addr_range last_insn = {
+        .start_addr = start,
+        .end_addr = end,
+    };
+    return last_insn;
 }
 
 static void block_exec_handler(unsigned int vcpu_idx, void* start) {
@@ -41,20 +44,17 @@ static void indirect_block_exec_handler(unsigned int vcpu_idx, void* block) {
 static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb* tb) {
     static uint64_t start_vaddr;
     start_vaddr = qemu_plugin_tb_vaddr(tb);
-    addr_range last_insn;
-    tb_last_insn(tb, &last_insn);
+    addr_range last_insn = tb_last_insn(tb);
     uint64_t end_vaddr = last_insn.end_addr;
 
     bool has_indirect = false;
     size_t num_callsites = sizeof(callsites) / sizeof(callsites[0]);
     for (size_t i = 0; i < num_callsites; i++) {
-        if ((start_vaddr <= callsites[i]) && (callsites[i] <= end_vaddr)) {
-            assert(last_insn.start_addr == callsites[i]);
-            //printf("translated block from vaddrs %lx to %lx containing %lx\n",  start_vaddr, end_vaddr, callsites[i]);
+        if (last_insn.start_addr == callsites[i]) {
             has_indirect = true;
             static addr_range block_addr;
             block_addr.start_addr = start_vaddr;
-            block_addr.end_addr = end_vaddr;
+            block_addr.end_addr = last_insn.start_addr;
             qemu_plugin_register_vcpu_tb_exec_cb(tb, indirect_block_exec_handler, QEMU_PLUGIN_CB_NO_REGS, &block_addr);
             break;
         }
