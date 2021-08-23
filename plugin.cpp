@@ -1,15 +1,21 @@
+extern "C" {
 #include "qemu/qemu-plugin.h"
+}
+
+#include <vector>
 #include <stdio.h>
 #include <assert.h>
 #include "callsites.h"
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
+using namespace std;
 typedef struct addr_range {
     uint64_t start_addr;
     uint64_t end_addr;
 } addr_range;
 
+std::vector<addr_range> indirect_blocks;
 static uint64_t indirect_callsite = 0;
 
 static addr_range tb_last_insn(struct qemu_plugin_tb* tb) {
@@ -41,6 +47,7 @@ static void indirect_block_exec_handler(unsigned int vcpu_idx, void* block) {
     indirect_callsite = block_addr->end_addr;
 }
 
+/// Checks if any of the input indirect jumps/call sites are the final instruction in the block being translated and assigns a block handler accordingly.
 static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb* tb) {
     static uint64_t start_vaddr;
     start_vaddr = qemu_plugin_tb_vaddr(tb);
@@ -52,9 +59,10 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb* tb) 
     for (size_t i = 0; i < num_callsites; i++) {
         if (last_insn.start_addr == callsites[i]) {
             has_indirect = true;
-            static addr_range block_addr;
-            block_addr.start_addr = start_vaddr;
-            block_addr.end_addr = last_insn.start_addr;
+            addr_range block_addr = {
+                .start_addr = start_vaddr,
+                .end_addr = last_insn.start_addr,
+            };
             qemu_plugin_register_vcpu_tb_exec_cb(tb, indirect_block_exec_handler, QEMU_PLUGIN_CB_NO_REGS, &block_addr);
             break;
         }
