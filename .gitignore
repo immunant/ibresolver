@@ -1,0 +1,5 @@
+*.o
+*.so
+*.csv
+*.txt
+demo/*

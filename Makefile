@@ -1,7 +1,7 @@
 CXX = clang++
 CXXFLAGS = -fPIC -std=c++17
 LDFLAGS = -shared -lstdc++
-PLUGIN = libiresolver.so
+PLUGIN = libibresolver.so
 SRC = plugin.cpp
 OBJ = $(SRC:.cpp=.o)
 

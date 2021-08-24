@@ -17,26 +17,30 @@ typedef struct addr_range {
 } addr_range;
 
 static size_t indirect_tb_idx = 0;
-static vector<uint64_t> callsites;
+// Ranges of addresses for each block ending in an indirect jump/call
 static vector<addr_range> indirect_blocks;
+
+// List of callsites obtained from input file
+static vector<uint64_t> callsites;
+
+// Address of previous callsite if it was an indirect jump/call
 static optional<uint64_t> indirect_taken = {};
 
-static addr_range tb_last_insn(struct qemu_plugin_tb *tb) {
+static ofstream outfile;
+
+// Get the addresses of the first and last bytes of the last instruction in a block
+static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
   uint64_t last_idx = qemu_plugin_tb_n_insns(tb) - 1;
   struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, last_idx);
-  uint64_t start = qemu_plugin_insn_vaddr(insn);
-  uint64_t end = start + qemu_plugin_insn_size(insn) - 1;
-  addr_range last_insn = {
-      .start_addr = start,
-      .end_addr = end,
-  };
-  return last_insn;
+  return qemu_plugin_insn_vaddr(insn);
 }
 
+// Write the destination of an indirect jump/call to the output file
 static void mark_indirect_call(uint64_t callsite, uint64_t dst) {
-  cout << hex << callsite << "," << hex << dst << endl;
+    outfile << hex << callsite << "," << hex << dst << endl;
 }
 
+// The default callback for when a block is executed
 static void block_exec_handler(unsigned int vcpu_idx, void *start) {
   uint64_t start_vaddr = (uint64_t)start;
   if (indirect_taken.has_value()) {
@@ -45,29 +49,30 @@ static void block_exec_handler(unsigned int vcpu_idx, void *start) {
   }
 }
 
+// Callback for executing blocks ending in an indirect jump/call
 static void indirect_block_exec_handler(unsigned int vcpu_idx, void *tb_idx) {
   addr_range block_addr = indirect_blocks[(size_t)tb_idx];
+
+  // Check if the previous block ended in an indirect jump/call
   if (indirect_taken.has_value()) {
     mark_indirect_call(indirect_taken.value(), block_addr.start_addr);
   }
+
   indirect_taken = block_addr.end_addr;
 }
 
-/// Checks if any of the input indirect jumps/call sites are the final
-/// instruction in the block being translated and assigns a block handler
-/// accordingly.
+// Register a callback for each time a block is executed
 static void block_trans_handler(qemu_plugin_id_t id,
                                 struct qemu_plugin_tb *tb) {
   static uint64_t start_vaddr;
   start_vaddr = qemu_plugin_tb_vaddr(tb);
-  addr_range last_insn = tb_last_insn(tb);
-  uint64_t end_vaddr = last_insn.end_addr;
+  uint64_t last_insn = tb_last_insn_vaddr(tb);
 
   for (uint64_t &addr : callsites) {
-    if (last_insn.start_addr == addr) {
+    if (last_insn == addr) {
       indirect_blocks.push_back({
           .start_addr = start_vaddr,
-          .end_addr = last_insn.start_addr,
+          .end_addr = last_insn,
       });
       qemu_plugin_register_vcpu_tb_exec_cb(tb, indirect_block_exec_handler,
                                            QEMU_PLUGIN_CB_NO_REGS,
@@ -81,12 +86,15 @@ static void block_trans_handler(qemu_plugin_id_t id,
 
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                                int argc, char **argv) {
-  if (argc != 1) {
-    cout << "No indirect jump/call sites provided" << endl;
+  if (argc < 2) {
+      cout << "Usage: /path/to/qemu \\\n";
+      cout << "\t-plugin /path/to/libibresolver.so,arg=\"callsites.txt\",arg=\"output.csv\" \\\n";
+      cout << "\t$BINARY" << endl;
     return -1;
   }
 
   fstream input(argv[0]);
+  outfile = ofstream(argv[1]);
   if (input.fail()) {
     cout << "Could not open file " << argv[0] << endl;
     return -2;
@@ -96,7 +104,8 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
     callsites.push_back(addr);
   }
   cout << "Loaded input file with " << callsites.size() << " indirect callsites" << endl;
-  cout << "callsite,destination" << endl;
+  outfile << "callsite,destination" << endl;
+  // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   return 0;
 }
