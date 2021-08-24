@@ -20,11 +20,16 @@ typedef struct addr_range {
 typedef struct shared_obj {
     const char *filename;
     int fd;
-    uint64_t load_bias;
-    uint64_t image_offset;
 } shared_obj;
 
+typedef struct mapped_section {
+    uint64_t load_bias;
+    uint64_t image_offset;
+    shared_obj so;
+} mapped_section;
+
 static vector<shared_obj> shared_objects;
+static vector<mapped_section> sections;
 
 static size_t indirect_tb_idx = 0;
 // Ranges of addresses for each block ending in an indirect jump/call
@@ -46,27 +51,42 @@ static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
   return qemu_plugin_insn_vaddr(insn);
 }
 
+//static uint64_t elf_image_bias(uint64_t vaddr) {
+//  uint64_t bias;
+//  uint64_t bin_bias = get_load_bias();
+//  uint64_t interp_bias = get_interp_load_bias();
+//  if ((vaddr >= bin_bias) && (vaddr >= interp_bias)) {
+//    bias = max(bin_bias, interp_bias);
+//  } else {
+//    bias = min(bin_bias, interp_bias);
+//  }
+//  return bias;
+//}
+
 static uint64_t elf_image_bias(uint64_t vaddr) {
-  uint64_t bias;
-  uint64_t bin_bias = get_load_bias();
-  uint64_t interp_bias = get_interp_load_bias();
-  if ((vaddr >= bin_bias) && (vaddr >= interp_bias)) {
-    bias = max(bin_bias, interp_bias);
-  } else {
-    bias = min(bin_bias, interp_bias);
-  }
-  return bias;
+    return 0;
 }
 
 // Write the destination of an indirect jump/call to the output file
 static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
+    //uint64_t dst_bias = elf_image_bias(dst);
+
+
   uint64_t dst_bias = elf_image_bias(dst);
   uint64_t bin_bias = get_load_bias();
   //const char *image_name;
   if (dst_bias != bin_bias) {
       //cout << shared_objects[0].filename << " " << hex << shared_objects[0].load_bias << " " << shared_objects[0].image_offset << endl;
-      uint64_t libc_addr = 0;
-      cout << "skipping jump to " << hex << dst - libc_addr + 0x26000 << endl;
+      //cout << "addr: " << hex << dst << endl;
+      //uint64_t libc_addr = 0;
+      //if (shared_objects.size() > 1) {
+      //    printf("%s\n", shared_objects[1].filename);
+      //    cout << hex << shared_objects[0].load_bias << endl;
+      //    cout << hex << shared_objects[0].image_offset << endl;
+      //    libc_addr = shared_objects[0].load_bias - shared_objects[0].image_offset;
+      //}
+      cout << "skipping jump to " << hex << dst - 0x4001879000 + 0x26000 << endl;
+      //cout << "skipping jump to " << hex << dst - libc_addr << endl;
       return;
   };
   //  image_name = "interpreter";
@@ -134,13 +154,17 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
         // mmap
         case 9: {
             int fd = (int)a5;
-            if (fd != -1) {
-                auto matching_fd = [=](shared_obj so){ return so.fd == fd; };
-                auto so = find_if(shared_objects.begin(), shared_objects.end(), matching_fd);
-                if (so != shared_objects.end()) {
-                    so->load_bias = a1;
-                    so->image_offset = a6;
-                }
+            uint64_t load_bias = a1;
+            uint64_t image_offset = a6;
+            auto matching_fd = [&](shared_obj so) { return so.fd == fd; };
+            auto so = find_if(shared_objects.rbegin(), shared_objects.rend(), matching_fd);
+            if (so != shared_objects.rend()) {
+                mapped_section sec = {
+                    .load_bias = load_bias,
+                    .image_offset = image_offset,
+                    .so = *so,
+                };
+                sections.push_back(sec);
             }
             break;
         }
@@ -148,10 +172,8 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
         // openat
         case 257: {
             shared_obj lib = {
-                .filename = (char *)a1,
+                .filename = (char *)a2,
                 .fd = -1,
-                .load_bias = UINT64_MAX,
-                .image_offset = UINT64_MAX,
             };
             shared_objects.push_back(lib);
             break;
