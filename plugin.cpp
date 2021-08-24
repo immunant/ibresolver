@@ -2,6 +2,7 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -16,7 +17,14 @@ typedef struct addr_range {
   uint64_t end_addr;
 } addr_range;
 
-static uint64_t libc_addr = 0;
+typedef struct shared_obj {
+    const char *filename;
+    int fd;
+    uint64_t load_bias;
+    uint64_t image_offset;
+} shared_obj;
+
+static vector<shared_obj> shared_objects;
 
 static size_t indirect_tb_idx = 0;
 // Ranges of addresses for each block ending in an indirect jump/call
@@ -56,6 +64,8 @@ static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
   uint64_t bin_bias = get_load_bias();
   //const char *image_name;
   if (dst_bias != bin_bias) {
+      //cout << shared_objects[0].filename << " " << hex << shared_objects[0].load_bias << " " << shared_objects[0].image_offset << endl;
+      uint64_t libc_addr = 0;
       cout << "skipping jump to " << hex << dst - libc_addr + 0x26000 << endl;
       return;
   };
@@ -120,26 +130,42 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
                                  int64_t num, uint64_t a1, uint64_t a2,
                                  uint64_t a3, uint64_t a4, uint64_t a5,
                                  uint64_t a6, uint64_t a7, uint64_t a8) {
-    // TODO: Where are linux syscall numbers defined? 
-    static bool loaded = false;
-    if (num == 9) {
+    switch (num) {
         // mmap
-        cout << "called mmap(0x" << hex << a1 << ", " << hex << a2 << ")" << endl;
-        int fd = a5;
-        off_t offset = a6;
-        cout << "fd: " << fd << ", offset: 0x" << hex << offset << endl;
-        if (a1 && !loaded) {
-            loaded = true;
-            libc_addr = a1;
+        case 9: {
+            int fd = (int)a5;
+            if (fd != -1) {
+                auto matching_fd = [=](shared_obj so){ return so.fd == fd; };
+                auto so = find_if(shared_objects.begin(), shared_objects.end(), matching_fd);
+                if (so != shared_objects.end()) {
+                    so->load_bias = a1;
+                    so->image_offset = a6;
+                }
+            }
+            break;
         }
-    } else if (num == 2) {
-        const char *filename = (char *)a1;
-        cout << "called open " << filename << endl;
-    } else if (num == 257) {
-        const char *filename = (char *)a2;
-        cout << "called openat " << filename << endl;
-    } else {
-        cout << "made a syscall " << dec << num << endl;
+        // TODO: Is the open syscall also used to open shared objects?
+        // openat
+        case 257: {
+            shared_obj lib = {
+                .filename = (char *)a1,
+                .fd = -1,
+                .load_bias = UINT64_MAX,
+                .image_offset = UINT64_MAX,
+            };
+            shared_objects.push_back(lib);
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+}
+
+static void syscall_ret_handler(qemu_plugin_id_t id, unsigned int vcpu_idx, int64_t num, int64_t ret) {
+    // If openat returned a valid file descriptor
+    if ((num == 257) && (ret != -1)) {
+        shared_objects.back().fd = ret;
     }
 }
 
@@ -170,5 +196,6 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   qemu_plugin_register_vcpu_syscall_cb(id, syscall_handler);
+  qemu_plugin_register_vcpu_syscall_ret_cb(id, syscall_ret_handler);
   return 0;
 }
