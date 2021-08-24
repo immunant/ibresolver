@@ -52,14 +52,15 @@ static uint64_t elf_image_bias(uint64_t vaddr) {
 static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
   uint64_t dst_bias = elf_image_bias(dst);
   uint64_t bin_bias = get_load_bias();
-  const char *image_name;
+  //const char *image_name;
   if (dst_bias != bin_bias) {
-    image_name = "interpreter";
-  } else {
-    image_name = "binary";
-  }
-  outfile << "0x" << hex << callsite - get_load_bias() << ",0x" << hex
-          << dst - dst_bias << "," << image_name << endl;
+      return;
+  };
+  //  image_name = "interpreter";
+  //} else {
+  //  image_name = "binary";
+  //}
+  outfile << "0x" << hex << callsite - bin_bias << ",0x" << hex << dst - dst_bias << endl;
 }
 
 // The default callback for when a block is executed
@@ -135,7 +136,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   }
   cout << "Loaded input file with " << callsites.size() << " indirect callsites"
        << endl;
-  outfile << "callsite,destination offset,destination ELF image" << endl;
+  outfile << "callsite,destination" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   return 0;

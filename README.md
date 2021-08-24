@@ -1,6 +1,6 @@
 # Ibresolver
 
-This is a QEMU TCG plugin for resolving indirect branches. The plugin takes in a list of addresses of indirect calls and jumps and produces a .csv with a list of `callsite,destination offset,destination ELF image` entries.
+This is a QEMU TCG plugin for resolving indirect branches. The plugin takes in a list of addresses of indirect calls and jumps and produces a .csv with a list of `callsite,destination` entries.
 
 # Building and prerequisites
 
