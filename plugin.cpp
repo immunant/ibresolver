@@ -156,12 +156,15 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
                                  uint64_t a3, uint64_t a4, uint64_t a5,
                                  uint64_t a6, uint64_t a7, uint64_t a8) {
     switch (num) {
-        // mmap
+        // TODO: What header(s) define syscall numbers? It'd be nice to replace these magic numbers
+        // Map a shared object file name to a `mapped_section` when entering an mmap syscall
         case 9: {
             int fd = (int)a5;
             uint64_t load_bias = a1;
             uint64_t image_offset = a6;
+
             auto matching_fd = [&](shared_obj so) { return so.fd == fd; };
+            // file descriptors can be reused so search for the /last/ ocurrence of an opened file with a file descriptor matching the mmap call
             auto so = find_if(shared_objects.rbegin(), shared_objects.rend(), matching_fd);
             if (so != shared_objects.rend()) {
                 mapped_section sec = {
@@ -176,6 +179,7 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
         // TODO: Is the open syscall also used to open shared objects?
         // openat
         case 257: {
+            // Store the file name passed to the openat syscall
             shared_obj lib = {
                 .filename = (char *)a2,
                 .fd = -1,
@@ -190,8 +194,9 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
 }
 
 static void syscall_ret_handler(qemu_plugin_id_t id, unsigned int vcpu_idx, int64_t num, int64_t ret) {
-    // If openat returned a valid file descriptor
+    // If the openat syscall returned a valid file descriptor
     if ((num == 257) && (ret != -1)) {
+        // Store the file descriptor returned by the syscall
         shared_objects.back().fd = ret;
     }
 }
@@ -222,6 +227,9 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   outfile << "callsite,destination offset,destination image" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
+
+  // Register callbacks for entering and returning from syscalls
+  // This is used to determine the load biases and image offsets for dynamically linked shared objects
   qemu_plugin_register_vcpu_syscall_cb(id, syscall_handler);
   qemu_plugin_register_vcpu_syscall_ret_cb(id, syscall_ret_handler);
   return 0;
