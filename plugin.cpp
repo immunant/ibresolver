@@ -16,6 +16,8 @@ typedef struct addr_range {
   uint64_t end_addr;
 } addr_range;
 
+static uint64_t libc_addr = 0;
+
 static size_t indirect_tb_idx = 0;
 // Ranges of addresses for each block ending in an indirect jump/call
 static vector<addr_range> indirect_blocks;
@@ -54,6 +56,7 @@ static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
   uint64_t bin_bias = get_load_bias();
   //const char *image_name;
   if (dst_bias != bin_bias) {
+      cout << "skipping jump to " << hex << dst - libc_addr + 0x26000 << endl;
       return;
   };
   //  image_name = "interpreter";
@@ -118,16 +121,25 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
                                  uint64_t a3, uint64_t a4, uint64_t a5,
                                  uint64_t a6, uint64_t a7, uint64_t a8) {
     // TODO: Where are linux syscall numbers defined? 
+    static bool loaded = false;
     if (num == 9) {
         // mmap
         cout << "called mmap(0x" << hex << a1 << ", " << hex << a2 << ")" << endl;
         int fd = a5;
         off_t offset = a6;
         cout << "fd: " << fd << ", offset: 0x" << hex << offset << endl;
+        if (a1 && !loaded) {
+            loaded = true;
+            libc_addr = a1;
+        }
     } else if (num == 2) {
-        // open
         const char *filename = (char *)a1;
         cout << "called open " << filename << endl;
+    } else if (num == 257) {
+        const char *filename = (char *)a2;
+        cout << "called openat " << filename << endl;
+    } else {
+        cout << "made a syscall " << dec << num << endl;
     }
 }
 
