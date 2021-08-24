@@ -39,4 +39,4 @@ See [demo/fn_ptr.elf.txt](demo/fn_ptr.elf.txt) for the expected format of the in
 
 # Supported architectures
 
-This plugin currently works on statically compiled x86-64 binaries in user mode. It may also work with statically compiled binaries for other architectures though none have been tested yet. Architectures with jump delay slots, like MIPS, and dynamically linked binaries are currently not expected to work.
+This plugin currently works on statically linked x86-64 binaries in user mode. It may also work with statically linked binaries for other architectures though none have been tested yet. Architectures with jump delay slots, like MIPS, and dynamically linked binaries are currently not expected to work.
