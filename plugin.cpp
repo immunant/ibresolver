@@ -113,6 +113,24 @@ static void block_trans_handler(qemu_plugin_id_t id,
       tb, block_exec_handler, QEMU_PLUGIN_CB_NO_REGS, (void *)start_vaddr);
 }
 
+static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
+                                 int64_t num, uint64_t a1, uint64_t a2,
+                                 uint64_t a3, uint64_t a4, uint64_t a5,
+                                 uint64_t a6, uint64_t a7, uint64_t a8) {
+    // TODO: Where are linux syscall numbers defined? 
+    if (num == 9) {
+        // mmap
+        cout << "called mmap(0x" << hex << a1 << ", " << hex << a2 << ")" << endl;
+        int fd = a5;
+        off_t offset = a6;
+        cout << "fd: " << fd << ", offset: 0x" << hex << offset << endl;
+    } else if (num == 2) {
+        // open
+        const char *filename = (char *)a1;
+        cout << "called open " << filename << endl;
+    }
+}
+
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                                int argc, char **argv) {
   if (argc < 2) {
@@ -139,5 +157,6 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   outfile << "callsite,destination" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
+  qemu_plugin_register_vcpu_syscall_cb(id, syscall_handler);
   return 0;
 }
