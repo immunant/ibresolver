@@ -2,20 +2,23 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
-#include "callsites.h"
 #include <iostream>
+#include <fstream>
 #include <vector>
+#include <optional>
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
 using namespace std;
+
 typedef struct addr_range {
   uint64_t start_addr;
   uint64_t end_addr;
 } addr_range;
 
-std::vector<addr_range> indirect_blocks;
-static uint64_t indirect_callsite = 0;
+static vector<uint64_t> callsites;
+static vector<addr_range> indirect_blocks;
+static optional<uint64_t> from_indirect = {};
 
 static addr_range tb_last_insn(struct qemu_plugin_tb *tb) {
   uint64_t last_idx = qemu_plugin_tb_n_insns(tb) - 1;
@@ -30,21 +33,21 @@ static addr_range tb_last_insn(struct qemu_plugin_tb *tb) {
 }
 
 static void block_exec_handler(unsigned int vcpu_idx, void *start) {
-  uint64_t start_vaddr = *(uint64_t *)start;
-  if (indirect_callsite) {
-    std::cout << "indirect jump at " << indirect_callsite << " went to "
-              << start_vaddr << std::endl;
-    indirect_callsite = 0;
+  uint64_t start_vaddr = (uint64_t)start;
+  if (from_indirect.has_value()) {
+    cout << "indirect jump at " << from_indirect.value() << " went to "
+              << start_vaddr << endl;
+    from_indirect = {};
   }
 }
 
 static void indirect_block_exec_handler(unsigned int vcpu_idx, void *block) {
   addr_range *block_addr = (addr_range *)block;
-  if (indirect_callsite) {
-    std::cout << "indirect jump at " << indirect_callsite << " went to "
-              << block_addr->start_addr << std::endl;
+  if (from_indirect.has_value()) {
+    cout << "indirect jump at " << from_indirect.value() << " went to "
+              << block_addr->start_addr << endl;
   }
-  indirect_callsite = block_addr->end_addr;
+  from_indirect = block_addr->end_addr;
 }
 
 /// Checks if any of the input indirect jumps/call sites are the final
@@ -58,32 +61,40 @@ static void block_trans_handler(qemu_plugin_id_t id,
   uint64_t end_vaddr = last_insn.end_addr;
 
   bool has_indirect = false;
-  size_t num_callsites = sizeof(callsites) / sizeof(callsites[0]);
-  for (size_t i = 0; i < num_callsites; i++) {
-    if (last_insn.start_addr == callsites[i]) {
-      has_indirect = true;
-      addr_range block_addr = {
-          .start_addr = start_vaddr,
-          .end_addr = last_insn.start_addr,
-      };
-      qemu_plugin_register_vcpu_tb_exec_cb(tb, indirect_block_exec_handler,
-                                           QEMU_PLUGIN_CB_NO_REGS, &block_addr);
-      break;
-    }
+  for (auto& addr : callsites) {
+      if (last_insn.start_addr == addr) {
+          has_indirect = true;
+          indirect_blocks.push_back({
+              .start_addr = start_vaddr,
+              .end_addr = last_insn.start_addr,
+          });
+          qemu_plugin_register_vcpu_tb_exec_cb(tb, indirect_block_exec_handler, QEMU_PLUGIN_CB_NO_REGS, &indirect_blocks.back());
+          break;
+      }
   }
   if (!has_indirect) {
-    qemu_plugin_register_vcpu_tb_exec_cb(tb, block_exec_handler,
-                                         QEMU_PLUGIN_CB_NO_REGS, &start_vaddr);
+      qemu_plugin_register_vcpu_tb_exec_cb(tb, block_exec_handler, QEMU_PLUGIN_CB_NO_REGS, (void *)start_vaddr);
   }
 }
 
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                                int argc, char **argv) {
-  // if (argc != 1) {
-  //    printf("uh oh\n");
-  //    return -1;
-  //}
-  std::cout << "loading indirect jmp/call resolver plugin" << std::endl;
+  if (argc != 1) {
+      cout << "No indirect jump/call sites provided" << endl;
+      return -1;
+  }
+
+  cout << "Loading indirect jmp/call resolver plugin" << endl;
+  fstream input(argv[0]);
+  if (input.fail()) {
+      cout << "Could not open file " << argv[0] << endl;
+      return -2;
+  }
+  uint64_t addr;
+  while (input >> hex >> addr) {
+      callsites.push_back(addr);
+  }
+  cout << "Loaded " << callsites.size() << " indirect callsites" << endl;
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   return 0;
 }

@@ -1,5 +1,5 @@
 CXX = clang++
-CXXFLAGS = -fPIC
+CXXFLAGS = -fPIC -std=c++17
 LDFLAGS = -shared -lstdc++
 PLUGIN = libiresolver.so
 SRC = plugin.cpp
