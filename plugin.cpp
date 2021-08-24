@@ -28,7 +28,8 @@ static optional<uint64_t> indirect_taken = {};
 
 static ofstream outfile;
 
-// Get the addresses of the first and last bytes of the last instruction in a block
+// Get the addresses of the first and last bytes of the last instruction in a
+// block
 static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
   uint64_t last_idx = qemu_plugin_tb_n_insns(tb) - 1;
   struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, last_idx);
@@ -40,24 +41,25 @@ static uint64_t elf_image_bias(uint64_t vaddr) {
   uint64_t bin_bias = get_load_bias();
   uint64_t interp_bias = get_interp_load_bias();
   if ((vaddr >= bin_bias) && (vaddr >= interp_bias)) {
-      bias = max(bin_bias, interp_bias);
+    bias = max(bin_bias, interp_bias);
   } else {
-      bias = min(bin_bias, interp_bias);
+    bias = min(bin_bias, interp_bias);
   }
   return bias;
 }
 
 // Write the destination of an indirect jump/call to the output file
 static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
-    uint64_t dst_bias = elf_image_bias(dst);
-    uint64_t bin_bias = get_load_bias();
-    const char *image_name;
-    if (dst_bias != bin_bias) {
-        image_name = "interpreter";
-    } else {
-        image_name = "binary";
-    }
-    outfile << "0x" << hex << callsite - get_load_bias() << ",0x" << hex << dst - dst_bias << "," << image_name << endl;
+  uint64_t dst_bias = elf_image_bias(dst);
+  uint64_t bin_bias = get_load_bias();
+  const char *image_name;
+  if (dst_bias != bin_bias) {
+    image_name = "interpreter";
+  } else {
+    image_name = "binary";
+  }
+  outfile << "0x" << hex << callsite - get_load_bias() << ",0x" << hex
+          << dst - dst_bias << "," << image_name << endl;
 }
 
 // The default callback for when a block is executed
@@ -108,9 +110,11 @@ static void block_trans_handler(qemu_plugin_id_t id,
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                                int argc, char **argv) {
   if (argc < 2) {
-      cout << "Usage: /path/to/qemu \\\n";
-      cout << "\t-plugin /path/to/libibresolver.so,arg=\"callsites.txt\",arg=\"output.csv\" \\\n";
-      cout << "\t$BINARY" << endl;
+    cout << "Usage: /path/to/qemu \\\n";
+    cout << "\t-plugin "
+            "/path/to/"
+            "libibresolver.so,arg=\"callsites.txt\",arg=\"output.csv\" \\\n";
+    cout << "\t$BINARY" << endl;
     return -1;
   }
 
@@ -124,7 +128,8 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   while (input >> hex >> addr) {
     callsites.push_back(addr);
   }
-  cout << "Loaded input file with " << callsites.size() << " indirect callsites" << endl;
+  cout << "Loaded input file with " << callsites.size() << " indirect callsites"
+       << endl;
   outfile << "callsite,destination offset,destination ELF image" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);

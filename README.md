@@ -1,18 +1,17 @@
 # Ibresolver
 
-This is a QEMU TCG plugin for resolving indirect branches. The plugin takes in a list of addresses of indirect calls and jumps and produces a .csv with a list of `callsite,destination` entries.
+This is a QEMU TCG plugin for resolving indirect branches. The plugin takes in a list of addresses of indirect calls and jumps and produces a .csv with a list of `callsite,destination offset,destination ELF image` entries.
 
 # Building and prerequisites
 
-To build, just run `make` from the root directory of this repo which should create the plugin, `libibresolver.so`. Although this plugin is not built against a particular version of QEMU, plugins have only [recently become enabled by default](https://github.com/qemu/qemu/commit/ba4dd2aabc35bc5385739e13f14e3a10a223ede0) in QEMU so most distros' packages do not support plugins. If your system's QEMU gives the error `qemu: unknown option 'plugin'` you must compile QEMU from source.
-
-
-## Building QEMU
+To build, just run `make` from the root directory of this repo which should create the plugin, `libibresolver.so`. This plugin also requires a patched version of QEMU. To download and build QEMU do
 
 ```
 $ git clone https://github.com/qemu/qemu
 
 $ cd qemu
+
+$ git apply /path/to/this/repo's/qemu.patch
 
 $ mkdir build
 
@@ -21,7 +20,7 @@ $ cd build
 # To see available targets
 $ ../configure --help
 
-# To reduce build times list the necessary targets
+# To reduce compilation times build only the necessary targets
 $ ../configure --target-list="$TARGETS"
 
 $ make
@@ -39,4 +38,4 @@ See [demo/fn_ptr.elf.txt](demo/fn_ptr.elf.txt) for the expected format of the in
 
 # Supported architectures
 
-This plugin currently works on statically linked x86-64 binaries in user mode. It may also work with statically linked binaries for other architectures though none have been tested yet. Architectures with jump delay slots, like MIPS, and dynamically linked binaries are currently not expected to work.
+This plugin currently works on x86-64 binaries in user mode. It may also work in system mode and with binaries for other architectures though this hasn't been tested yet. Architectures with jump delay slots (e.g. MIPS, SPARC) and multithreaded programs are currently not expected to work.
