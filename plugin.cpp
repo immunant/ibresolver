@@ -35,16 +35,36 @@ static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
   return qemu_plugin_insn_vaddr(insn);
 }
 
+static uint64_t elf_image_bias(uint64_t vaddr) {
+  uint64_t bias;
+  uint64_t bin_bias = get_load_bias();
+  uint64_t interp_bias = get_interp_load_bias();
+  if ((vaddr >= bin_bias) && (vaddr >= interp_bias)) {
+      bias = max(bin_bias, interp_bias);
+  } else {
+      bias = min(bin_bias, interp_bias);
+  }
+  return bias;
+}
+
 // Write the destination of an indirect jump/call to the output file
-static void mark_indirect_call(uint64_t callsite, uint64_t dst) {
-    outfile << hex << callsite << "," << hex << dst << endl;
+static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
+    uint64_t dst_bias = elf_image_bias(dst);
+    uint64_t bin_bias = get_load_bias();
+    const char *image_name;
+    if (dst_bias != bin_bias) {
+        image_name = "interpreter";
+    } else {
+        image_name = "binary";
+    }
+    outfile << "0x" << hex << callsite - get_load_bias() << ",0x" << hex << dst - dst_bias << "," << image_name << endl;
 }
 
 // The default callback for when a block is executed
 static void block_exec_handler(unsigned int vcpu_idx, void *start) {
   uint64_t start_vaddr = (uint64_t)start;
   if (indirect_taken.has_value()) {
-    mark_indirect_call(indirect_taken.value(), start_vaddr);
+    mark_indirect_branch(indirect_taken.value(), start_vaddr);
     indirect_taken = {};
   }
 }
@@ -55,7 +75,7 @@ static void indirect_block_exec_handler(unsigned int vcpu_idx, void *tb_idx) {
 
   // Check if the previous block ended in an indirect jump/call
   if (indirect_taken.has_value()) {
-    mark_indirect_call(indirect_taken.value(), block_addr.start_addr);
+    mark_indirect_branch(indirect_taken.value(), block_addr.start_addr);
   }
 
   indirect_taken = block_addr.end_addr;
@@ -67,9 +87,10 @@ static void block_trans_handler(qemu_plugin_id_t id,
   static uint64_t start_vaddr;
   start_vaddr = qemu_plugin_tb_vaddr(tb);
   uint64_t last_insn = tb_last_insn_vaddr(tb);
+  uint64_t bias = get_load_bias();
 
   for (uint64_t &addr : callsites) {
-    if (last_insn == addr) {
+    if (last_insn == (addr + bias)) {
       indirect_blocks.push_back({
           .start_addr = start_vaddr,
           .end_addr = last_insn,
@@ -104,7 +125,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
     callsites.push_back(addr);
   }
   cout << "Loaded input file with " << callsites.size() << " indirect callsites" << endl;
-  outfile << "callsite,destination" << endl;
+  outfile << "callsite,destination offset,destination ELF image" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   return 0;

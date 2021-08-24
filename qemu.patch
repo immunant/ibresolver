@@ -1,0 +1,74 @@
+diff --git a/disas.c b/disas.c
+index 3dab4482d1..e5ad2f2d87 100644
+--- a/disas.c
++++ b/disas.c
+@@ -15,6 +15,9 @@ typedef struct CPUDebug {
+ /* Filled in by elfload.c.  Simplistic, but will do for now. */
+ struct syminfo *syminfos = NULL;
+ 
++uint64_t interp_load_bias = 0;
++uint64_t binary_load_bias = 0;
++
+ /*
+  * Get LENGTH bytes from info's buffer, at host address memaddr.
+  * Transfer them to myaddr.
+diff --git a/include/disas/disas.h b/include/disas/disas.h
+index d363e95ede..4e763bedeb 100644
+--- a/include/disas/disas.h
++++ b/include/disas/disas.h
+@@ -44,4 +44,7 @@ struct syminfo {
+ /* Filled in by elfload.c.  Simplistic, but will do for now. */
+ extern struct syminfo *syminfos;
+ 
++extern uint64_t interp_load_bias;
++extern uint64_t binary_load_bias;
++
+ #endif /* QEMU_DISAS_H */
+diff --git a/include/qemu/qemu-plugin.h b/include/qemu/qemu-plugin.h
+index e6e815abc5..4c262a8a17 100644
+--- a/include/qemu/qemu-plugin.h
++++ b/include/qemu/qemu-plugin.h
+@@ -577,4 +577,7 @@ int qemu_plugin_n_max_vcpus(void);
+  */
+ void qemu_plugin_outs(const char *string);
+ 
++uint64_t get_load_bias(void);
++uint64_t get_interp_load_bias(void);
++
+ #endif /* QEMU_PLUGIN_API_H */
+diff --git a/linux-user/elfload.c b/linux-user/elfload.c
+index 01e9a833fb..a82af74a28 100644
+--- a/linux-user/elfload.c
++++ b/linux-user/elfload.c
+@@ -2979,6 +2979,7 @@ static void load_elf_interp(const char *filename, struct image_info *info,
+     }
+ 
+     load_elf_image(filename, fd, info, NULL, bprm_buf);
++    interp_load_bias = info->load_addr;
+ }
+ 
+ static int symfind(const void *s0, const void *s1)
+@@ -3184,6 +3185,7 @@ int load_elf_binary(struct linux_binprm *bprm, struct image_info *info)
+ 
+     load_elf_image(bprm->filename, bprm->fd, info,
+                    &elf_interpreter, bprm->buf);
++    binary_load_bias = info->load_addr;
+ 
+     /* ??? We need a copy of the elf header for passing to create_elf_tables.
+        If we do nothing, we'll have overwritten this when we re-use bprm->buf
+diff --git a/plugins/api.c b/plugins/api.c
+index 2d521e6ba8..67f6d62ff9 100644
+--- a/plugins/api.c
++++ b/plugins/api.c
+@@ -383,3 +383,11 @@ void qemu_plugin_outs(const char *string)
+ {
+     qemu_log_mask(CPU_LOG_PLUGIN, "%s", string);
+ }
++
++uint64_t get_load_bias(void) {
++    return binary_load_bias;
++}
++
++uint64_t get_interp_load_bias(void) {
++    return interp_load_bias;
++}
