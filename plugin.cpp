@@ -89,7 +89,12 @@ static void block_trans_handler(qemu_plugin_id_t id,
   static uint64_t start_vaddr;
   start_vaddr = qemu_plugin_tb_vaddr(tb);
   uint64_t last_insn = tb_last_insn_vaddr(tb);
-  uint64_t bias = get_load_bias();
+  uint64_t bias = 0;
+
+  // If an interpreter was loaded, add the binary bias to the input callsites
+  if (get_interp_load_bias()) {
+    bias = get_load_bias();
+  }
 
   for (uint64_t &addr : callsites) {
     if (last_insn == (addr + bias)) {
