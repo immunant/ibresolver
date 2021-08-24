@@ -25,7 +25,7 @@ typedef struct shared_obj {
 typedef struct mapped_section {
     uint64_t load_bias;
     uint64_t image_offset;
-    shared_obj so;
+    const char *so_name;
 } mapped_section;
 
 static vector<shared_obj> shared_objects;
@@ -51,49 +51,54 @@ static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
   return qemu_plugin_insn_vaddr(insn);
 }
 
-//static uint64_t elf_image_bias(uint64_t vaddr) {
-//  uint64_t bias;
-//  uint64_t bin_bias = get_load_bias();
-//  uint64_t interp_bias = get_interp_load_bias();
-//  if ((vaddr >= bin_bias) && (vaddr >= interp_bias)) {
-//    bias = max(bin_bias, interp_bias);
-//  } else {
-//    bias = min(bin_bias, interp_bias);
-//  }
-//  return bias;
-//}
-
 static uint64_t elf_image_bias(uint64_t vaddr) {
-    return 0;
+    vector<uint64_t> potential_load_biases;
+    if (get_load_bias() <= vaddr) {
+        potential_load_biases.push_back(get_load_bias());
+    }
+    if (get_interp_load_bias() <= vaddr) {
+        potential_load_biases.push_back(get_interp_load_bias());
+    }
+    for (auto& sec : sections) {
+        if (sec.load_bias <= vaddr) {
+            potential_load_biases.push_back(sec.load_bias);
+        }
+    }
+    // TODO: Can there ever be no potential_load_biases?
+    return *max_element(potential_load_biases.begin(), potential_load_biases.end());
+}
+
+static size_t find_section(uint64_t bias) {
+    for (size_t i = 0; i < sections.size(); i++) {
+        if (sections[i].load_bias == bias) {
+            return i;
+        }
+    }
+    return SIZE_MAX;
 }
 
 // Write the destination of an indirect jump/call to the output file
 static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
-    //uint64_t dst_bias = elf_image_bias(dst);
+  uint64_t dst_image_bias = elf_image_bias(dst);
+  uint64_t dst_image_offset;
+  const char *so_name;
+  if (dst_image_bias == get_load_bias()) {
+      dst_image_offset = 0;
+      so_name = "binary";
+  } else if (dst_image_bias == get_interp_load_bias()) {
+      dst_image_offset = 0;
+      so_name = "interpreter";
+  } else {
+      size_t idx = find_section(dst_image_bias);
+      mapped_section sec = sections[idx];
+      dst_image_offset = sec.image_offset;
+      so_name = sec.so_name;
+  }
 
+  dst -= dst_image_bias - dst_image_offset;
+  callsite -= get_load_bias();
 
-  uint64_t dst_bias = elf_image_bias(dst);
-  uint64_t bin_bias = get_load_bias();
-  //const char *image_name;
-  if (dst_bias != bin_bias) {
-      //cout << shared_objects[0].filename << " " << hex << shared_objects[0].load_bias << " " << shared_objects[0].image_offset << endl;
-      //cout << "addr: " << hex << dst << endl;
-      //uint64_t libc_addr = 0;
-      //if (shared_objects.size() > 1) {
-      //    printf("%s\n", shared_objects[1].filename);
-      //    cout << hex << shared_objects[0].load_bias << endl;
-      //    cout << hex << shared_objects[0].image_offset << endl;
-      //    libc_addr = shared_objects[0].load_bias - shared_objects[0].image_offset;
-      //}
-      cout << "skipping jump to " << hex << dst - 0x4001879000 + 0x26000 << endl;
-      //cout << "skipping jump to " << hex << dst - libc_addr << endl;
-      return;
-  };
-  //  image_name = "interpreter";
-  //} else {
-  //  image_name = "binary";
-  //}
-  outfile << "0x" << hex << callsite - bin_bias << ",0x" << hex << dst - dst_bias << endl;
+  outfile << "0x" << hex << callsite << ",0x" << hex << dst << "," << so_name << endl;
 }
 
 // The default callback for when a block is executed
@@ -162,7 +167,7 @@ static void syscall_handler(qemu_plugin_id_t id, unsigned int vcpu_index,
                 mapped_section sec = {
                     .load_bias = load_bias,
                     .image_offset = image_offset,
-                    .so = *so,
+                    .so_name = so->filename,
                 };
                 sections.push_back(sec);
             }
@@ -214,7 +219,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
   }
   cout << "Loaded input file with " << callsites.size() << " indirect callsites"
        << endl;
-  outfile << "callsite,destination" << endl;
+  outfile << "callsite,destination offset,destination image" << endl;
   // Register a callback for each time a block is translated
   qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
   qemu_plugin_register_vcpu_syscall_cb(id, syscall_handler);
