@@ -77,6 +77,10 @@ static size_t find_section(uint64_t bias) {
     return SIZE_MAX;
 }
 
+static bool dynamically_linked() {
+    return get_interp_load_bias() != 0;
+}
+
 // Write the destination of an indirect jump/call to the output file
 static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
   uint64_t dst_image_bias = elf_image_bias(dst);
@@ -95,8 +99,10 @@ static void mark_indirect_branch(uint64_t callsite, uint64_t dst) {
       so_name = sec.so_name;
   }
 
-  dst -= dst_image_bias - dst_image_offset;
-  callsite -= get_load_bias();
+  if (dynamically_linked()) {
+    dst -= dst_image_bias - dst_image_offset;
+    callsite -= get_load_bias();
+  }
 
   outfile << "0x" << hex << callsite << ",0x" << hex << dst << "," << so_name << endl;
 }
@@ -131,7 +137,7 @@ static void block_trans_handler(qemu_plugin_id_t id,
   uint64_t bias = 0;
 
   // If an interpreter was loaded, add the binary bias to the input callsites
-  if (get_interp_load_bias()) {
+  if (dynamically_linked()) {
     bias = get_load_bias();
   }
 
