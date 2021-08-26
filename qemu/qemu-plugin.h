@@ -577,7 +577,4 @@ int qemu_plugin_n_max_vcpus(void);
  */
 void qemu_plugin_outs(const char *string);
 
-uint64_t get_load_bias(void);
-uint64_t get_interp_load_bias(void);
-
 #endif /* QEMU_PLUGIN_API_H */
