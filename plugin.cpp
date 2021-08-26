@@ -2,6 +2,7 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
+#include <elf.h>
 #include <string.h>
 
 #include <algorithm>
@@ -24,6 +25,7 @@ static ofstream outfile;
 
 static string binary_name;
 static optional<uint64_t> binary_bias = {};
+static bool dynamically_linked = false;
 
 typedef struct segment {
     string so_name;
@@ -63,7 +65,10 @@ static void mark_indirect_branch(uint64_t callsite, uint64_t dst_vaddr) {
     while (getline(maps, line)) {
         optional<segment> seg = addr_in_segment(dst_vaddr, line);
         if (seg.has_value()) {
-            uint64_t dst_offset = dst_vaddr - seg->load_bias + seg->image_offset;
+            uint64_t dst_offset = dst_vaddr;
+            if (dynamically_linked) {
+                dst_offset -= seg->load_bias - seg->image_offset;
+            }
             outfile << "0x" << hex << callsite << ",0x" << hex << dst_offset << "," << seg->so_name << endl;
             return;
         }
@@ -107,14 +112,26 @@ static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
 static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) {
     // The binary is loaded after the plugin is installed so we resort to getting the binary bias here
     if (!binary_bias.has_value()) {
-        ifstream maps("/proc/self/maps");
-        string line;
-        while (getline(maps, line)) {
-            optional<uint64_t> load_bias = file_load_bias(binary_name.data(), line);
-            if (load_bias.has_value()) {
-                binary_bias = load_bias.value();
-                break;
+        // Check if ELF is dynamically linked
+        ifstream binary(binary_name, ifstream::binary);
+        // E_TYPE is at the same offset in both 32 and 64-bit ELFs
+        binary.seekg(EI_NIDENT);
+        uint16_t e_type;
+        binary.read(reinterpret_cast<char *>(&e_type), sizeof(e_type));
+        dynamically_linked = e_type == ET_DYN;
+        
+        if (dynamically_linked) {
+            ifstream maps("/proc/self/maps");
+            string line;
+            while (getline(maps, line)) {
+                optional<uint64_t> load_bias = file_load_bias(binary_name.data(), line);
+                if (load_bias.has_value()) {
+                    binary_bias = load_bias.value();
+                    break;
+                }
             }
+        } else {
+            binary_bias = 0;
         }
     }
 
