@@ -70,6 +70,7 @@ static void mark_indirect_branch(uint64_t callsite, uint64_t dst_vaddr) {
     }
 }
 
+// Callback for insn at the start of a block. Takes an absolute vaddr.
 static void branch_taken(unsigned int vcpu_idx, void *dst_vaddr) {
     if (branch_addr.has_value()) {
         mark_indirect_branch(branch_addr.value(), (uint64_t)dst_vaddr);
@@ -77,13 +78,23 @@ static void branch_taken(unsigned int vcpu_idx, void *dst_vaddr) {
     }
 }
 
+// Callback for insn following an indirect branch
 static void branch_skipped(unsigned int vcpu_idx, void *userdata) {
     branch_addr = {};
 }
 
+// Callback for indirect branch insn. Takes a vaddr relative to the binary bias.
 static void indirect_branch_exec(unsigned int vcpu_idx, void *callsite_addr) {
     uint64_t insn_addr = (uint64_t)callsite_addr;
     branch_addr = insn_addr;
+}
+
+// Callback for indirect branch at the start of a block. Takes an absolute vaddr.
+static void indirect_branch_at_start(unsigned int vcpu_idx, void *callsite_addr) {
+    branch_taken(vcpu_idx, callsite_addr);
+
+    uint64_t vaddr_offset = (uint64_t)callsite_addr - binary_bias.value();
+    indirect_branch_exec(vcpu_idx, (void *)vaddr_offset);
 }
 
 static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
@@ -92,7 +103,6 @@ static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
     return qemu_plugin_insn_vaddr(insn);
 }
 
-#include <unistd.h>
 // Register a callback for each time a block is executed
 static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) {
     // The binary is loaded after the plugin is installed so we resort to getting the binary bias here
@@ -107,8 +117,6 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
             }
         }
     }
-    cout << "pid is " << getpid() << endl;
-    while (1) {}
 
     uint64_t start_vaddr = qemu_plugin_tb_vaddr(tb);
     uint64_t last_insn = tb_last_insn_vaddr(tb);
@@ -118,11 +126,28 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
         struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, i);
         uint64_t insn_addr = qemu_plugin_insn_vaddr(insn) - binary_bias.value();
         bool insn_is_branch = binary_search(callsites.begin(), callsites.end(), insn_addr);
-        if (insn_is_branch) {
-            qemu_plugin_register_vcpu_insn_exec_cb(insn, indirect_branch_exec, QEMU_PLUGIN_CB_NO_REGS, (void *)insn_addr);
-            if (i + 1 < n_insns) {
-                struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, i + 1);
-                qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped, QEMU_PLUGIN_CB_NO_REGS, NULL);
+        // The callback for the first instruction in a block should mark the indirect branch destination if one was taken
+        if (i == 0) {
+            if (!insn_is_branch) {
+                // Since the dest vaddr can be in any .so, we don't subtract the binary bias from the callback arg
+                qemu_plugin_register_vcpu_insn_exec_cb(insn, branch_taken, QEMU_PLUGIN_CB_NO_REGS, (void *)start_vaddr);
+            } else {
+                // If the first branch is also an indirect branch, the callback must mark the destination and update `branch_addr`
+                // Don't subtract the binary bias from the callback arg like in `branch_taken`
+                qemu_plugin_register_vcpu_insn_exec_cb(insn, indirect_branch_at_start, QEMU_PLUGIN_CB_NO_REGS, (void *)start_vaddr);
+                // The following insn should clear `branch_addr` like below
+                if (n_insns > 1) {
+                    struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, 1);
+                    qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped, QEMU_PLUGIN_CB_NO_REGS, NULL);
+                }
+            }
+        } else {
+            if (insn_is_branch) {
+                qemu_plugin_register_vcpu_insn_exec_cb(insn, indirect_branch_exec, QEMU_PLUGIN_CB_NO_REGS, (void *)insn_addr);
+                if (i + 1 < n_insns) {
+                    struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, i + 1);
+                    qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped, QEMU_PLUGIN_CB_NO_REGS, NULL);
+                }
             }
         }
     }
