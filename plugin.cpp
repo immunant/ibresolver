@@ -2,6 +2,7 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
+#include "disasm.h"
 #include <elf.h>
 #include <string.h>
 
@@ -14,9 +15,6 @@ extern "C" {
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
 using namespace std;
-
-// List of callsites obtained from input file
-static vector<uint64_t> callsites;
 
 // Address of previous callsite if it was an indirect jump/call
 static optional<uint64_t> branch_addr = {};
@@ -141,7 +139,11 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
     for (size_t i = 0; i < n_insns; i++) {
         struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, i);
         uint64_t insn_addr = qemu_plugin_insn_vaddr(insn) - binary_bias.value();
-        bool insn_is_branch = binary_search(callsites.begin(), callsites.end(), insn_addr);
+        
+        uint8_t *insn_data = (uint8_t *)qemu_plugin_insn_data(insn);
+        size_t insn_size = qemu_plugin_insn_size(insn);
+
+        bool insn_is_branch = is_indirect_branch(insn_data, insn_size);
         // The callback for the first instruction in a block should mark the indirect branch
         // destination if one was taken
         if (i == 0) {
@@ -179,31 +181,33 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
 
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc,
                                char **argv) {
-    if (argc < 3) {
+    if (argc < 1) {
         cout << "Usage: /path/to/qemu \\" << endl;
-        cout << "\t-plugin /path/to/libibresolver.so,arg=\"callsites.txt\",arg=\"output.csv\",arg=\"/absolute/path/to/$BINARY\"" << endl;
+        cout << "\t-plugin /path/to/libibresolver.so,arg=\"output.csv\" \\" << endl;
         cout << "\t$BINARY" << endl;
         return -1;
     }
 
-    ifstream input(argv[0]);
-    outfile = ofstream(argv[1]);
-    // TODO: It's surprisingly difficult to get the binary name from a QEMU plugin so we currently pass the name as a plugin arg.
-    // A better approach would be to go from vaddr to name using /proc/self/maps, but this isn't straightforward since execution start in the ELF interpreter so we can't do it in the post-install initialization.
-    // The way to go is probably to remove the `callsites` input and support branches originating from anywhere by checking for branches in the translate block callback then we'd just need the name of the ELF corresponding to the block being translated.
-    binary_name = string(argv[2]);
-
-    if (input.fail()) {
+    outfile = ofstream(argv[0]);
+    if (outfile.fail()) {
         cout << "Could not open file " << argv[0] << endl;
         return -2;
     }
 
-    uint64_t addr;
-    while (input >> hex >> addr) {
-        callsites.push_back(addr);
+    const char *arch;
+    if (!strcmp(info->target_name, "arm")) {
+        arch = "armv7";
+    } else if (!strcmp(info->target_name, "x86_64")) {
+        arch = info->target_name;
+    } else {
+        cout << "Unsupported qemu architecture" << endl;
+        return -3;
     }
-    sort(callsites.begin(), callsites.end());
-    cout << "Loaded input file with " << callsites.size() << " indirect callsites" << endl;
+    if (!init_backend(arch)) {
+        cout << "Could not initialize disassembly backend for " << arch << endl;
+        return -4;
+    }
+
     outfile << "callsite,destination offset,destination image" << endl;
     // Register a callback for each time a block is translated
     qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
