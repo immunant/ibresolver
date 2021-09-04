@@ -1,16 +1,16 @@
 extern "C" {
 #include "qemu/qemu-plugin.h"
+// TODO: Move this into the QEMU plugin API
+uintptr_t guest_base;
 }
 
-#include "disasm.h"
-#include <elf.h>
 #include <string.h>
 
-#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <vector>
+
+#include "disasm.h"
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
@@ -21,60 +21,67 @@ static optional<uint64_t> branch_addr = {};
 
 static ofstream outfile;
 
-static string binary_name;
-static optional<uint64_t> binary_bias = {};
-static bool dynamically_linked = false;
+typedef struct image_offset {
+    uint64_t offset;
+    size_t image_name_pos;
+} image_offset;
 
-typedef struct segment {
-    string so_name;
-    uint64_t load_bias;
-    uint64_t image_offset;
-} segment;
-
-static optional<uint64_t> file_load_bias(const char *filename, const string_view segment) {
-    char name[100];
-    uint64_t load_bias;
-    sscanf(segment.data(), "%lx-%*lx %*c%*c%*c%*c %*lx %*lx:%*lx %*lu %s", &load_bias, name);
-    if (!strcmp(name, filename)) {
-        return load_bias;
-    }
-    return {};
-}
-
-static optional<segment> addr_in_segment(uint64_t dst_vaddr, const string_view segment) {
-    char name[100];
+static optional<image_offset> get_offset(const string_view segment, uint64_t addr) {
+    uint32_t name_pos;
     uint64_t from, to, offset;
-    sscanf(segment.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %s", &from, &to, &offset, name);
-    if ((from <= dst_vaddr) && (dst_vaddr <= to)) {
-        struct segment seg = {
-            .so_name = string(name),
-            .load_bias = from,
-            .image_offset = offset,
+    sscanf(segment.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %n", &from, &to, &offset,
+           &name_pos);
+    if ((from <= addr) && (addr <= to)) {
+        struct image_offset offset = {
+            .offset = addr + guest_base,
+            .image_name_pos = name_pos,
         };
-        return seg;
+        return offset;
     }
     return {};
 }
 
 // Write the destination of an indirect jump/call to the output file
-static void mark_indirect_branch(uint64_t callsite, uint64_t dst_vaddr) {
+static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
     ifstream maps("/proc/self/maps");
     string line;
+    optional<image_offset> callsite = {};
+    optional<image_offset> dst = {};
     while (getline(maps, line)) {
-        optional<segment> seg = addr_in_segment(dst_vaddr, line);
-        if (seg.has_value()) {
-            uint64_t dst_offset = dst_vaddr;
-            if (dynamically_linked) {
-                dst_offset -= seg->load_bias - seg->image_offset;
+        if (!callsite.has_value()) {
+            callsite = get_offset(line, callsite_vaddr);
+            if (callsite.has_value()) {
+                // copy name from line
             }
-            outfile << "0x" << hex << callsite << ",0x" << hex << dst_offset << "," << seg->so_name
-                    << endl;
-            return;
+        }
+        if (!dst.has_value()) {
+            dst = get_offset(line, dst_vaddr);
+            if (dst.has_value()) {
+                // copy name from line
+            }
+        }
+        if (callsite.has_value() && dst.has_value()) {
+            break;
         }
     }
-}
+    if (!callsite.has_value()) {
+        cout << "ERROR: Unable to find callsite address in /proc/self/maps" << endl;
+    }
+    if (!dst.has_value()) {
+        cout << "ERROR: Unable to find destination address in /proc/self/maps" << endl;
+    }
+    outfile << "0x" << hex << callsite->offset << ",0x" << hex << dst->offset << ",";
+    // if (callsite->image_name) {
+    //    outfile << callsite->image_name;
+    //}
+    // if (dst->image_name) {
+    //    outfile << "," << callsite->image_name;
+    //}
+    outfile << endl;
+    return;
+};
 
-// Callback for insn at the start of a block. Takes an absolute vaddr.
+// Callback for insn at the start of a block
 static void branch_taken(unsigned int vcpu_idx, void *dst_vaddr) {
     if (branch_addr.has_value()) {
         mark_indirect_branch(branch_addr.value(), (uint64_t)dst_vaddr);
@@ -85,61 +92,26 @@ static void branch_taken(unsigned int vcpu_idx, void *dst_vaddr) {
 // Callback for insn following an indirect branch
 static void branch_skipped(unsigned int vcpu_idx, void *userdata) { branch_addr = {}; }
 
-// Callback for indirect branch insn. Takes a vaddr relative to the binary bias.
+// Callback for indirect branch insn
 static void indirect_branch_exec(unsigned int vcpu_idx, void *callsite_addr) {
-    uint64_t insn_addr = (uint64_t)callsite_addr;
-    branch_addr = insn_addr;
+    branch_addr = (uint64_t)callsite_addr;
 }
 
-// Callback for indirect branch at the start of a block. Takes an absolute vaddr.
+// Callback for indirect branch at the start of a block
 static void indirect_branch_at_start(unsigned int vcpu_idx, void *callsite_addr) {
     branch_taken(vcpu_idx, callsite_addr);
-
-    uint64_t vaddr_offset = (uint64_t)callsite_addr - binary_bias.value();
-    indirect_branch_exec(vcpu_idx, (void *)vaddr_offset);
-}
-
-static uint64_t tb_last_insn_vaddr(struct qemu_plugin_tb *tb) {
-    uint64_t last_idx = qemu_plugin_tb_n_insns(tb) - 1;
-    struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, last_idx);
-    return qemu_plugin_insn_vaddr(insn);
+    indirect_branch_exec(vcpu_idx, callsite_addr);
 }
 
 // Register a callback for each time a block is executed
 static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) {
-    // The binary is loaded after the plugin is installed so we resort to doing a post-install initialization here.
-    if (!binary_bias.has_value()) {
-        // Check if ELF is dynamically linked
-        ifstream binary(binary_name, ifstream::binary);
-        // E_TYPE is at the same offset in both 32 and 64-bit ELFs
-        binary.seekg(EI_NIDENT);
-        uint16_t e_type;
-        binary.read(reinterpret_cast<char *>(&e_type), sizeof(e_type));
-        dynamically_linked = e_type == ET_DYN;
-
-        if (dynamically_linked) {
-            ifstream maps("/proc/self/maps");
-            string line;
-            while (getline(maps, line)) {
-                optional<uint64_t> load_bias = file_load_bias(binary_name.data(), line);
-                if (load_bias.has_value()) {
-                    binary_bias = load_bias.value();
-                    break;
-                }
-            }
-        } else {
-            binary_bias = 0;
-        }
-    }
-
     uint64_t start_vaddr = qemu_plugin_tb_vaddr(tb);
-    uint64_t last_insn = tb_last_insn_vaddr(tb);
-    size_t n_insns = qemu_plugin_tb_n_insns(tb);
+    size_t num_insns = qemu_plugin_tb_n_insns(tb);
 
-    for (size_t i = 0; i < n_insns; i++) {
+    for (size_t i = 0; i < num_insns; i++) {
         struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, i);
-        uint64_t insn_addr = qemu_plugin_insn_vaddr(insn) - binary_bias.value();
-        
+        uint64_t insn_addr = qemu_plugin_insn_vaddr(insn);
+
         uint8_t *insn_data = (uint8_t *)qemu_plugin_insn_data(insn);
         size_t insn_size = qemu_plugin_insn_size(insn);
 
@@ -148,18 +120,15 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
         // destination if one was taken
         if (i == 0) {
             if (!insn_is_branch) {
-                // Since the dest vaddr can be in any .so, we don't subtract the binary bias from
-                // the callback arg
                 qemu_plugin_register_vcpu_insn_exec_cb(insn, branch_taken, QEMU_PLUGIN_CB_NO_REGS,
                                                        (void *)start_vaddr);
             } else {
                 // If the first branch is also an indirect branch, the callback must mark the
-                // destination and update `branch_addr` Don't subtract the binary bias from the
-                // callback arg like in `branch_taken`
+                // destination and update `branch_addr`
                 qemu_plugin_register_vcpu_insn_exec_cb(insn, indirect_branch_at_start,
                                                        QEMU_PLUGIN_CB_NO_REGS, (void *)start_vaddr);
-                // The following insn should clear `branch_addr` like below
-                if (n_insns > 1) {
+                // In this case the second insn should clear `branch_addr` like below
+                if (num_insns > 1) {
                     struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, 1);
                     qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped,
                                                            QEMU_PLUGIN_CB_NO_REGS, NULL);
@@ -169,7 +138,7 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
             if (insn_is_branch) {
                 qemu_plugin_register_vcpu_insn_exec_cb(insn, indirect_branch_exec,
                                                        QEMU_PLUGIN_CB_NO_REGS, (void *)insn_addr);
-                if (i + 1 < n_insns) {
+                if (i + 1 < num_insns) {
                     struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, i + 1);
                     qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped,
                                                            QEMU_PLUGIN_CB_NO_REGS, NULL);
@@ -208,7 +177,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         return -4;
     }
 
-    outfile << "callsite,destination offset,destination image" << endl;
+    outfile << "callsite,destination,callsite image,destination image" << endl;
     // Register a callback for each time a block is translated
     qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
 
