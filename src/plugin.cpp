@@ -2,8 +2,8 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
-#include <string.h>
-
+#include <string>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -81,7 +81,8 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
     if (!dst.has_value()) {
         cout << "ERROR: Unable to find destination address in /proc/self/maps" << endl;
     }
-    outfile << "0x" << hex << callsite->offset << "," << callsite_image << ",0x" << hex << dst->offset << "," << dst_image << endl;
+    outfile << "0x" << hex << callsite->offset << "," << callsite_image << ",0x" << hex
+            << dst->offset << "," << dst_image << endl;
     return;
 };
 
@@ -167,18 +168,9 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         return -2;
     }
 
-    const char *arch;
-    if (!strcmp(info->target_name, "arm")) {
-        arch = "armv7";
-    } else if (!strcmp(info->target_name, "x86_64")) {
-        arch = info->target_name;
-    } else {
-        cout << "Unsupported qemu architecture" << endl;
+    if (!init_backend(info->target_name)) {
+        cout << "Could not initialize disassembly backend for " << info->target_name << endl;
         return -3;
-    }
-    if (!init_backend(arch)) {
-        cout << "Could not initialize disassembly backend for " << arch << endl;
-        return -4;
     }
 
     outfile << "callsite offset,callsite image,destination offset,destination image" << endl;
