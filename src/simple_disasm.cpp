@@ -31,11 +31,17 @@ bool init_backend_impl(const char *arch_name) {
 bool is_indirect_branch_impl(uint8_t *insn_data, size_t insn_size) {
     if (!arch.compare("arm")) {
         // Handles blx rn
+        const uint32_t blx_variable = 0xf000000f;
+        const uint32_t blx = 0xf12fff3f;
         if (insn_size == 4) {
-            uint32_t w = *(uint32_t *)insn_data;
+            uint32_t b0 = insn_data[0];
+            uint32_t b1 = insn_data[1];
+            uint32_t b2 = insn_data[2];
+            uint32_t b3 = insn_data[3];
+            uint32_t word = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
             // Set variable bitfields in the instruction
-            w |= 0xf000000f;
-            if (w == 0xf12fff3f) {
+            word |= blx_variable;
+            if (word == blx) {
                 return true;
             }
         }

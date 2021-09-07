@@ -38,7 +38,7 @@ OBJ = $(SRC:.cpp=.o)
 
 $(PLUGIN): $(OBJ)
 	@echo Using the $(BACKEND) disassembly backend
-	$(CC) $(LDFLAGS) $(LINK_BINJA) -o $@ $^
+	$(CXX) $(LDFLAGS) $(LINK_BINJA) -o $@ $^
 
 %.o: %.cpp
 	$(CXX) -c $(CXXFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
