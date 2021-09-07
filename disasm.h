@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdlib>
+#include <cstdint>
 
 extern "C" bool init_backend(const char *arch_name);
 
