@@ -1,15 +1,20 @@
-# Ibresolver
+# Overview
 
-This is a QEMU TCG plugin for resolving indirect branches. The plugin takes in a list of addresses of indirect calls and jumps and produces a .csv with the addresses the branches resolved to.
+This is a QEMU user-mode plugin for resolving indirect branches. The plugin supports various architectures and uses a configurable disassembly backend to detect indirect jumps and calls. When the specified branches are taken, the callsite and destination are written to a .csv.
 
 # Building and prerequisites
 
-To build, just run `make` from the root directory of this repo which should create the plugin, `libibresolver.so`. Although this plugin is not built against a particular version of QEMU, plugins have only [recently become enabled by default](https://github.com/qemu/qemu/commit/ba4dd2aabc35bc5385739e13f14e3a10a223ede0) in QEMU so most distros' packages do not support plugins. If your system's QEMU gives the error `qemu: unknown option 'plugin'` you must compile QEMU from source.
+This plugin requires a patched version of QEMU. To download and build QEMU do
 
 ```
 $ git clone https://github.com/qemu/qemu
 
 $ cd qemu
+
+# The specific commit doesn't matter too much, but the patch has been tested with this one.
+$ git checkout ecf2706e271fa705621f0d5ad9517fe15a22bf22
+
+$ git apply /path/to/this/repo's/qemu.patch
 
 $ mkdir build
 
@@ -21,24 +26,67 @@ $ ../configure --help
 # To reduce compilation times build only the necessary targets
 $ ../configure --target-list="$TARGETS"
 
+# Or ninja
 $ make
 ```
 
-# Usage
+## Building the plugin
 
-To run QEMU with the plugin use
+This plugin detects indirect branches with either a built-in backend or a custom one provided at runtime. By default `make` builds the plugin with a simple backend which only detects `blx` on 32-bit ARM and `callq` on x86-64. The other option is to use [binaryninja](https://binary.ninja/) to identify indirect branches.
+
+### Building with binaryninja
+
+After installing [binaryninja](https://docs.binary.ninja/getting-started.html), download the binaryninja API with the following
 
 ```
-$ /path/to/qemu -plugin ./libibresolver.so,arg="$CALLSITES_TXT",arg="$OUTPUT_CSV",arg="/absolute/path/to/$BINARY" $BINARY
+$ git submodule update
+```
+
+Then [build the binaryninja API](https://github.com/Vector35/binaryninja-api#build-instructions) and build this plugin with
+
+```
+make BACKEND=binja BINJA_INSTALL_DIR=/path/to/binaryninja/installation/
+```
+
+Note that `BINJA_INSTALL_DIR` is the path to binaryninja not the API.
+
+### Building custom backends
+
+Custom backends can be used by [building shared libraries](https://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html#AEN95) that define the following functions
+```
+// Checks if the backend supports the given architecture. Here `arch_name` is the suffix of the QEMU build (e.g. qemu-x86_64, qemu-arm).
+extern "C" bool arch_supported(const char *arch_name);
+
+// Checks if the given instruction is an indirect branch.
+extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
+```
+
+Note that the name of the shared library should be prefixed by "lib" and have the extension ".so".
+
+# Usage
+
+To run QEMU with the plugin using the built-in backend do
+
+```
+$ /path/to/qemu -plugin ./libibresolver.so,arg="$OUTPUT_CSV" $BINARY
 ```
 
 Note that the argument to the `-plugin` flag is a comma-separated list with no spaces and the plugin must be a path (i.e. QEMU won't accept just `libibresolver.so`). Running QEMU on non-native binaries may require passing in the `-L` flag (e.g. `/path/to/qemu-arm -L /usr/arm-linux-gnueabihf/ -plugin ...`).
 
-# Data formats
-The list of callsites given as an input should have one address per line in hexdecimal prefixed by "0x". Only indirect calls originating in the binary passed to QEMU are currently supported. See the [arm32 test input](tests/arm32/fn_ptr.elf.txt) for an example.
+To use a custom backend add the path to the shared library as the second plugin argument. For example to use a shared library named `libbackend.so` as the backend use
+```
+$ /path/to/qemu -plugin ./libiresolver.so,arg="$OUTPUT_CSV",arg="./libbackend.so" $BINARY
+```
 
-The output is a csv with the address of the callsite in the first column, the address the indirect branch resolved to (given as an offset into the corresponding ELF image) in the second column and the name of the destination ELF image in the final column. Note that "binary" refers to the program passed to QEMU and "interpreter" refers to the system's ELF interpreter (typically `/lib64/ld-linux-x86-64.so.2`, `/lib/ld-linux-armhf.so.3` or similar). See the [arm32 test output](tests/arm32/fn_ptr.csv) for an example of the output.
+# Output format
+
+The output is a csv formatted as follows
+```
+callsite offset,callsite image,destination offset,destination image
+```
+
+Where each line has the callsite and destination of each indirect branch. Instead of outputting the virtual addresses (vaddrs) of callsites and destinations, this plugin translates those vaddrs to offsets in the corresponding ELFs. The output can then easily be interpreted by running `objdump` on one of the ELFs in the second or fourth columns and looking for the corresponding offset address.
 
 # Supported architectures
 
-This plugin currently works on native binaries in user mode. Support for non-native binaries (e.g. arm32 on running on x86-64) is currently a work-in-progress. Architectures with jump delay slots (e.g. MIPS, SPARC) and multithreaded programs are currently not expected to work.
+This plugin currently works on x86-64 and arm32 binaries. Support for other architectures may be added through custom disassembly backends, though this has not been tested yet. Architectures with jump delay slots (e.g. MIPS, SPARC), multithreaded programs and JITs are currently not expected to work.
