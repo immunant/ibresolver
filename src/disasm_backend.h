@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <cstdlib>
 
-extern "C" bool init_backend(const char *arch_name);
+// Checks if the backend supports the given architecture. Here `arch_name` is the suffix of the QEMU build (e.g. qemu-x86_64, qemu-arm).
+extern "C" bool arch_supported(const char *arch_name);
 
+// Checks if the given instruction is an indirect branch.
 extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);

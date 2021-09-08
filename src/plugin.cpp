@@ -2,6 +2,7 @@ extern "C" {
 #include "qemu/qemu-plugin.h"
 }
 
+#include <dlfcn.h>
 #include <string>
 #include <cstring>
 #include <fstream>
@@ -157,7 +158,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
                                char **argv) {
     if (argc < 1) {
         cout << "Usage: /path/to/qemu \\" << endl;
-        cout << "\t-plugin /path/to/libibresolver.so,arg=\"output.csv\" \\" << endl;
+        cout << "\t-plugin /path/to/libibresolver.so,arg=\"output.csv\",arg=\"/path/to/disassembly/libbackend.so\" \\" << endl;
         cout << "\t$BINARY" << endl;
         return -1;
     }
@@ -168,7 +169,12 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         return -2;
     }
 
-    if (!init_backend(info->target_name)) {
+    bool backend_provided = argc == 2;
+    if (backend_provided) {
+        //handle = dlopen(argv[1], RTLD_NOW | RTLD_DEEPBIND);
+    }
+
+    if (!arch_supported(info->target_name)) {
         cout << "Could not initialize disassembly backend for " << info->target_name << endl;
         return -3;
     }

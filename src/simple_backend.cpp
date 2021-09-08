@@ -7,7 +7,7 @@ using namespace std;
 
 static string arch = "";
 
-extern "C" bool init_backend(const char *arch_name) {
+extern "C" bool arch_supported(const char *arch_name) {
     if (strcmp(arch_name, "arm") && strcmp(arch_name, "x86_64")) {
         return false;
     }

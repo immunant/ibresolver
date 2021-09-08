@@ -7,7 +7,7 @@ using namespace BinaryNinja;
 
 static BNArchitecture *arch = NULL;
 
-extern "C" bool init_backend(const char *arch_name) {
+extern "C" bool arch_supported(const char *arch_name) {
     const char *binja_arch;
     if (!strcmp(arch_name, "arm")) {
         binja_arch = "armv7";
