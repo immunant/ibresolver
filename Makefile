@@ -5,9 +5,10 @@ LDFLAGS = -shared -lstdc++
 INCLUDES = -I $(shell pwd)
 PLUGIN = libibresolver.so
 SRC = src/plugin.cpp
+ALL_OBJS = src/plugin.o src/binaryninja_backend.o src/simple_backend.o
 
 BACKEND ?= simple
-DEFINES =
+DEFINES = -DBACKEND_NAME=\"$(BACKEND)\"
 
 ifeq ($(BACKEND), binja)
 ifndef BINJA_INSTALL_DIR
@@ -19,7 +20,7 @@ ifeq ($(BACKEND), simple)
 SRC += src/simple_backend.cpp
 else ifeq ($(BACKEND), binja)
 SRC += src/binaryninja_backend.cpp
-DEFINES += -DBINJA_PLUGIN_DIR="\"$(BINJA_PLUGIN_DIR)/plugins\""
+DEFINES += -DBINJA_PLUGIN_DIR="\"$(BINJA_INSTALL_DIR)/plugins\""
 INCLUDES += -I binaryninja-api
 LDFLAGS += -L build/out -L $(BINJA_INSTALL_DIR) \
     -lbinaryninjaapi -lbinaryninjacore \
@@ -31,12 +32,12 @@ endif
 OBJ = $(SRC:.cpp=.o)
 
 $(PLUGIN): $(OBJ)
-	@echo Using the $(BACKEND) disassembly backend
+	@echo Building with the $(BACKEND) disassembly backend as the default
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 %.o: %.cpp
 	$(CXX) -c $(CXXFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
 
 clean:
-	rm -f $(PLUGIN) $(OBJ)
+	rm -f $(PLUGIN) $(ALL_OBJS)
 

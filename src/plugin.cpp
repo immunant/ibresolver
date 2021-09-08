@@ -9,8 +9,6 @@ extern "C" {
 #include <iostream>
 #include <optional>
 
-#include "disasm_backend.h"
-
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
 using namespace std;
@@ -181,13 +179,13 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
     }
 
     bool backend_provided = argc == 2;
-    //
-    void *backend_handle = NULL;
+    void *backend_handle = RTLD_DEFAULT;
     const char *arch_supported_fn_name = "arch_supported_default_impl";
     const char *is_indirect_branch_fn_name = "is_indirect_branch_default_impl";
-    const char *backend_name = "main";
+    const char *backend_name = BACKEND_NAME;
+
     if (backend_provided) {
-        backend_handle = dlopen(argv[1], RTLD_NOW | RTLD_DEEPBIND);
+        backend_handle = dlopen(argv[1], RTLD_LAZY | RTLD_DEEPBIND);
         if (!backend_handle) {
             cout << "Could not open DSO for alternate disassembly backend" << endl;
             return -3;
@@ -195,8 +193,8 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         arch_supported_fn_name = "arch_supported";
         is_indirect_branch_fn_name = "is_indirect_branch";
         backend_name = argv[1];
-        cout << "Using " << backend_name << " as the disassembly backend" << endl;
     }
+    cout << "Using the " << backend_name << " disassembly backend" << endl;
     arch_supported = (arch_supported_fn)dlsym(backend_handle, arch_supported_fn_name);
     if (dlerror()) {
         return loading_sym_failed(arch_supported_fn_name, backend_name);
@@ -208,7 +206,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
 
     if (!arch_supported(info->target_name)) {
         cout << "Could not initialize disassembly backend for " << info->target_name << endl;
-        return -4;
+        return -5;
     }
 
     outfile << "callsite offset,callsite image,destination offset,destination image" << endl;
