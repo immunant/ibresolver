@@ -25,10 +25,7 @@ LDFLAGS += -L build/out -L $(BINJA_INSTALL_DIR) \
     -lbinaryninjaapi -lbinaryninjacore \
     -Wl,-rpath=$(BINJA_INSTALL_DIR)
 else
-LIB_NAME = $(subst lib,,$(notdir $(basename $(BACKEND))))
-LIB_DIR = $(abspath $(dir $(BACKEND)))
-LDFLAGS += -L$(LIB_DIR)  -l$(LIB_NAME) \
-    -Wl,-rpath=$(LIB_DIR)
+$(error Unknown disassembly backend $(BACKEND))
 endif
 
 OBJ = $(SRC:.cpp=.o)

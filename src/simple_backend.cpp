@@ -1,13 +1,11 @@
 #include <string>
 #include <cstring>
 
-#include "disasm_backend.h"
-
 using namespace std;
 
 static string arch = "";
 
-extern "C" bool arch_supported(const char *arch_name) {
+extern "C" bool arch_supported_default_impl(const char *arch_name) {
     if (strcmp(arch_name, "arm") && strcmp(arch_name, "x86_64")) {
         return false;
     }
@@ -15,7 +13,7 @@ extern "C" bool arch_supported(const char *arch_name) {
     return true;
 }
 
-extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size) {
+extern "C" bool is_indirect_branch_default_impl(uint8_t *insn_data, size_t insn_size) {
     if (!arch.compare("arm")) {
         // Handles blx rn
         const uint32_t blx_variable_bits = 0xf000000f;

@@ -15,6 +15,12 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 
 using namespace std;
 
+typedef bool (*arch_supported_fn)(const char *);
+typedef bool (*is_indirect_branch_fn)(uint8_t *, size_t);
+
+arch_supported_fn arch_supported;
+is_indirect_branch_fn is_indirect_branch;
+
 // Address of previous callsite if it was an indirect jump/call
 static optional<uint64_t> branch_addr = {};
 
@@ -154,6 +160,11 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
     }
 }
 
+int loading_sym_failed(const char *sym, const char *backend_name) {
+    cout << "Could not load `" << sym << "` function from backend " << backend_name << endl;
+    return -4;
+}
+
 extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc,
                                char **argv) {
     if (argc < 1) {
@@ -170,13 +181,34 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
     }
 
     bool backend_provided = argc == 2;
+    //
+    void *backend_handle = NULL;
+    const char *arch_supported_fn_name = "arch_supported_default_impl";
+    const char *is_indirect_branch_fn_name = "is_indirect_branch_default_impl";
+    const char *backend_name = "main";
     if (backend_provided) {
-        //handle = dlopen(argv[1], RTLD_NOW | RTLD_DEEPBIND);
+        backend_handle = dlopen(argv[1], RTLD_NOW | RTLD_DEEPBIND);
+        if (!backend_handle) {
+            cout << "Could not open DSO for alternate disassembly backend" << endl;
+            return -3;
+        }
+        arch_supported_fn_name = "arch_supported";
+        is_indirect_branch_fn_name = "is_indirect_branch";
+        backend_name = argv[1];
+        cout << "Using " << backend_name << " as the disassembly backend" << endl;
+    }
+    arch_supported = (arch_supported_fn)dlsym(backend_handle, arch_supported_fn_name);
+    if (dlerror()) {
+        return loading_sym_failed(arch_supported_fn_name, backend_name);
+    }
+    is_indirect_branch = (is_indirect_branch_fn)dlsym(backend_handle, is_indirect_branch_fn_name);
+    if (dlerror()) {
+        return loading_sym_failed(is_indirect_branch_fn_name, backend_name);
     }
 
     if (!arch_supported(info->target_name)) {
         cout << "Could not initialize disassembly backend for " << info->target_name << endl;
-        return -3;
+        return -4;
     }
 
     outfile << "callsite offset,callsite image,destination offset,destination image" << endl;

@@ -1,5 +1,4 @@
 #include <cstring>
-#include "disasm_backend.h"
 #include "binaryninjacore.h"
 #include "binaryninjaapi.h"
 
@@ -7,7 +6,7 @@ using namespace BinaryNinja;
 
 static BNArchitecture *arch = NULL;
 
-extern "C" bool arch_supported(const char *arch_name) {
+extern "C" bool arch_supported_default_impl(const char *arch_name) {
     const char *binja_arch;
     if (!strcmp(arch_name, "arm")) {
         binja_arch = "armv7";
@@ -22,7 +21,7 @@ extern "C" bool arch_supported(const char *arch_name) {
     return arch;
 }
 
-extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size) {
+extern "C" bool is_indirect_branch_default_impl(uint8_t *insn_data, size_t insn_size) {
     BNInstructionInfo info;
     BNGetInstructionInfo(arch, insn_data, 0 /* addr */, insn_size, &info);
     if (info.branchCount) {
