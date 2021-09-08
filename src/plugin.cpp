@@ -8,7 +8,7 @@ extern "C" {
 #include <iostream>
 #include <optional>
 
-#include "disasm.h"
+#include "disasm_backend.h"
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 

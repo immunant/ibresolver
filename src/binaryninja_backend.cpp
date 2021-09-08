@@ -1,5 +1,5 @@
 #include <cstring>
-#include "disasm.h"
+#include "disasm_backend.h"
 #include "binaryninjacore.h"
 #include "binaryninjaapi.h"
 
@@ -23,11 +23,6 @@ extern "C" bool init_backend(const char *arch_name) {
 }
 
 extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size) {
-    // This is a non-extensive workaround for indirect branches that binja doesn't report
-    // TODO: Figure out if this is a bug in binja and file an issue
-    if (is_indirect_branch_impl(insn_data, insn_size)) {
-        return true;
-    }
     BNInstructionInfo info;
     BNGetInstructionInfo(arch, insn_data, 0 /* addr */, insn_size, &info);
     if (info.branchCount) {
