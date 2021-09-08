@@ -577,4 +577,11 @@ int qemu_plugin_n_max_vcpus(void);
  */
 void qemu_plugin_outs(const char *string);
 
+/**
+ * Returns the address space base of the emulated process
+ *
+ * Note that the address space base is initialized after plugins are installed.
+ */
+uintptr_t qemu_plugin_guest_base(void);
+
 #endif /* QEMU_PLUGIN_API_H */

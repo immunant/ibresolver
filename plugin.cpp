@@ -1,7 +1,5 @@
 extern "C" {
 #include "qemu/qemu-plugin.h"
-// TODO: Move this into the QEMU plugin API
-uintptr_t guest_base;
 }
 
 #include <string.h>
@@ -33,7 +31,7 @@ typedef struct image_offset {
 static optional<image_offset> get_offset(const string_view maps_entry, uint64_t emulator_vaddr) {
     uint32_t name_pos;
     uint64_t from, to, offset;
-    uint64_t real_vaddr = emulator_vaddr + guest_base;
+    uint64_t real_vaddr = emulator_vaddr + qemu_plugin_guest_base();
     sscanf(maps_entry.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %n", &from, &to, &offset,
            &name_pos);
     if ((from <= real_vaddr) && (real_vaddr <= to)) {

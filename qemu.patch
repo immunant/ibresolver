@@ -1,0 +1,31 @@
+diff --git a/include/qemu/qemu-plugin.h b/include/qemu/qemu-plugin.h
+index e6e815abc5..674dbd5c3c 100644
+--- a/include/qemu/qemu-plugin.h
++++ b/include/qemu/qemu-plugin.h
+@@ -577,4 +577,11 @@ int qemu_plugin_n_max_vcpus(void);
+  */
+ void qemu_plugin_outs(const char *string);
+ 
++/**
++ * Returns the address space base of the emulated process
++ *
++ * Note that the address space base is initialized after plugins are installed.
++ */
++uintptr_t qemu_plugin_guest_base(void);
++
+ #endif /* QEMU_PLUGIN_API_H */
+diff --git a/plugins/api.c b/plugins/api.c
+index 2d521e6ba8..b02acbf1f5 100644
+--- a/plugins/api.c
++++ b/plugins/api.c
+@@ -383,3 +383,10 @@ void qemu_plugin_outs(const char *string)
+ {
+     qemu_log_mask(CPU_LOG_PLUGIN, "%s", string);
+ }
++
++/*
++ * Returns the address space base of the emulated process
++ */
++uintptr_t qemu_plugin_guest_base(void) {
++    return guest_base;
++}
