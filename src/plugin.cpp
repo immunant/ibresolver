@@ -25,23 +25,39 @@ static optional<uint64_t> branch_addr = {};
 static ofstream outfile;
 
 typedef struct image_offset {
-    // An offset into a memory-mapped ELF image
+    // An offset into a loaded ELF file
     uint64_t offset;
-    // The position of the image name in its /proc/self/maps entry
+    // The position of the image name in the /proc/self/maps entry for the
+    // corresponding offset.
     size_t image_name_pos;
 } image_offset;
 
-// Returns an `image_offset` for the input vaddr if it's in the memory-mapped region defined by the
-// /proc/self/maps entry.
-static optional<image_offset> get_offset(const string_view maps_entry, uint64_t emulator_vaddr) {
+// Check if the given `emulator_vaddr` falls within the loaded segment described
+// by the `maps_entry` which is a line read from /proc/self/maps.
+static optional<image_offset> emulator_vaddr_to_offset(const string_view maps_entry, uint64_t emulator_vaddr) {
     uint32_t name_pos;
-    uint64_t from, to, offset;
+    uint64_t start, end, file_load_offset;
+
+    // QEMU may add a constant offset to the emulated system's memory. Adding
+    // guest base to emulator_vaddr converts it back to a "real" vaddr that can
+    // be compared against the host system's vaddrs in /proc/self/maps
     uint64_t real_vaddr = emulator_vaddr + qemu_plugin_guest_base();
-    sscanf(maps_entry.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %n", &from, &to, &offset,
+
+    // Parse the /proc/self/maps line. Stores the start and end vaddrs of the
+    // loaded segment, the offset into the file the segment was loaded from
+    // (`file_load_offset`) and the number of characters in the maps string
+    // before the name of the ELF file (`name_pos`).
+    sscanf(maps_entry.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %n", &start, &end, &file_load_offset,
            &name_pos);
-    if ((from <= real_vaddr) && (real_vaddr <= to)) {
+    // Check if the addr is within the segment. Comparing real_vaddr with the
+    // maps vaddrs is ok since it's also a system vaddr
+    if ((start <= real_vaddr) && (real_vaddr <= end)) {
+        // Get the address as an offset into the loaded segment
+        uint64_t segment_offset = real_vaddr - start;
+        // Turn the segment offset into an offset into the file
+        uint64_t file_offset = segment_offset + file_load_offset;
         struct image_offset offset = {
-            .offset = real_vaddr - from,
+            .offset = file_offset,
             .image_name_pos = name_pos,
         };
         return offset;
@@ -60,7 +76,7 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
     // For each entry in /proc/self/maps
     while (getline(maps, line)) {
         if (!callsite.has_value()) {
-            callsite = get_offset(line, callsite_vaddr);
+            callsite = emulator_vaddr_to_offset(line, callsite_vaddr);
             if (callsite.has_value()) {
                 // Copy name since `line` gets reused in this loop
                 char *image_name = line.data() + callsite->image_name_pos;
@@ -68,7 +84,7 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
             }
         }
         if (!dst.has_value()) {
-            dst = get_offset(line, dst_vaddr);
+            dst = emulator_vaddr_to_offset(line, dst_vaddr);
             if (dst.has_value()) {
                 // Copy name since `line` gets reused in this loop
                 char *image_name = line.data() + dst->image_name_pos;
@@ -86,8 +102,12 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
     if (!dst.has_value()) {
         cout << "ERROR: Unable to find destination address in /proc/self/maps" << endl;
     }
-    outfile << "0x" << hex << callsite->offset << "," << callsite_image << ",0x" << hex
-            << dst->offset << "," << dst_image << endl;
+    outfile << "0x" << hex << callsite->offset << ",";
+    outfile << "0x" << hex << dst->offset << ",";
+    outfile << "0x" << hex << callsite_vaddr << ",";
+    outfile << "0x" << hex << dst_vaddr << ",";
+    outfile << callsite_image << ",";
+    outfile << dst_image << endl;
     return;
 };
 
@@ -209,7 +229,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         return -5;
     }
 
-    outfile << "callsite offset,callsite image,destination offset,destination image" << endl;
+    outfile << "callsite offset, dest offset, callsite vaddr, dest vaddr, callsite image, dest image" << endl;
     // Register a callback for each time a block is translated
     qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
 
