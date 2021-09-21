@@ -4,3 +4,4 @@
 *.txt
 demo/*
 *.core
+tests/__pycache__/

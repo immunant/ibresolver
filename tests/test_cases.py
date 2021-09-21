@@ -1,51 +1,89 @@
 import csv
 from elftools.elf.elffile import ELFFile
 
+def open_elf(filename):
+    f = open(filename + ".elf", 'rb')
+    return ELFFile(f)
+
+def open_csv(filename):
+    f = open(filename + ".csv", newline='')
+    return csv.reader(f)
+
+def sym_addr(filename, sym_name):
+    """
+    Gets the address of the first symbol matching `sym_name` in `filename + ".elf"`
+    """
+    elf = open_elf(filename)
+    symtab = elf.get_section_by_name('.symtab')
+    syms = symtab.get_symbol_by_name(sym_name)
+    if len(syms) == 0:
+        return None
+    return syms[0]['st_value']
+
 def check_jump(filename, origin, dst):
     """
     Checks if an indirect jump from `origin` to `dst` was recorded in the output
     file `filename + ".csv"`
     """
-    #statically_compiled = False
-    #entry = 0
-    #with open(filename + ".elf", 'rb') as elffile:
-    #    elf = ELFFile(elffile)
-    #    if elf.header['e_type'] == "ET_EXEC":
-    #        statically_compiled = True
-    #        entry = elf.header['e_entry']
-    with open(filename + ".csv", newline='') as csvfile:
-        output = csv.reader(csvfile)
-        first_line = True
-        #offset_origin = origin
-        #if statically_compiled:
-        #    offset_origin = origin - 0x400000
-        #offset_dst = dst
-        #if statically_compiled:
-        #    offset_dst = dst - 0x400000
-        for row in output:
-            if first_line:
-                first_line = False
-                continue
-            if origin == int(row[0], 16):
-                if dst == int(row[2], 16):
-                    return True
-        return False
+    elf = open_elf(filename)
+    statically_compiled = elf.header['e_type'] == "ET_EXEC"
+    header_line = True
+    for row in open_csv(filename):
+        if header_line:
+            header_line = False
+            continue
+        call_origin = row[2] if statically_compiled else row[0]
+        call_dst = row[3] if statically_compiled else row[1]
+        if origin == int(call_origin, 16):
+            if dst == int(call_dst, 16):
+                return True
+    return False
 
-# The `origin`s for `test_fn_ptr_*` correspond to the addresses of the indirect call to `call_with_args`
-# The `dst`s correspond to the addresses of the `add` and `sub` functions
+def check_fn_ptr_test(prefix, callsite):
+    """
+    Check for indirect calls from the instruction at `callsite` (found using objdump)
+    to functions named `add` and `sub`.
+    """
+    add_fn = sym_addr(prefix, "add")
+    sub_fn = sym_addr(prefix, "sub")
+    assert check_jump(prefix, callsite, add_fn)
+    assert check_jump(prefix, callsite, sub_fn)
 
 def test_fn_ptr_x86_64():
-    assert check_jump("x86-64/fn_ptr", 0x117f, 0x1139)
-    assert check_jump("x86-64/fn_ptr", 0x117f, 0x114d)
+    """
+    fn_ptr.c compiled for x86-64 with no special flags
+    """
+    check_fn_ptr_test("x86-64/fn_ptr", 0x117f)
+
+def test_fn_ptr_x86_64_offset_text():
+    """
+    fn_ptr.c compiled for x86-64 with -Ttext=0x8000 to ensure that the .text
+    section is not in the first loadable segment. This means that virtual
+    addresses in .text won't correspond to offsets into the file, so instead of
+    using symbols like in `check_fn_ptr_test` we use objdump -dF to get the file
+    offsets for the callsite and the `add` and `sub` functions.
+    """
+    prefix = "x86-64/fn_ptr-offset-text"
+    callsite = 0x213f
+    add_fn = 0x20f9
+    sub_fn = 0x210d
+    assert check_jump(prefix, callsite, add_fn)
+    assert check_jump(prefix, callsite, sub_fn)
 
 def test_fn_ptr_x86_64_static():
-    assert check_jump("x86-64/fn_ptr-static", 0x4017db, 0x401795)
-    assert check_jump("x86-64/fn_ptr-static", 0x4017db, 0x4017a9)
+    """
+    fn_ptr.c compiled for x86-64 with -static
+    """
+    check_fn_ptr_test("x86-64/fn_ptr-static", 0x4017db)
 
 def test_fn_ptr_arm32():
-    assert check_jump("arm32/fn_ptr", 0x5fc, 0x578)
-    assert check_jump("arm32/fn_ptr", 0x5fc, 0x5a8)
+    """
+    fn_ptr.c compiled for arm32 with no special flags
+    """
+    check_fn_ptr_test("arm32/fn_ptr", 0x5fc)
 
 def test_fn_ptr_arm32_static():
-    assert check_jump("arm32/fn_ptr-static", 0x105fc, 0x10578)
-    assert check_jump("arm32/fn_ptr-static", 0x105fc, 0x105a8)
+    """
+    fn_ptr.c compiled for arm32 with -static
+    """
+    check_fn_ptr_test("arm32/fn_ptr-static", 0x105fc)

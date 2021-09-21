@@ -1,6 +1,6 @@
-callsite offset,callsite image,destination offset,destination image
-0x34c8,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,0x3c50,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
-0x3530,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,0x17f6,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
-0x17db,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,0x1795,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
-0x17db,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,0x17a9,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
-0x9153,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,0x3cf0,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
+callsite offset, dest offset, callsite vaddr, dest vaddr, callsite image, dest image
+0x34c8,0x3c50,0x4034c8,0x403c50,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
+0x3530,0x17f6,0x403530,0x4017f6,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
+0x17db,0x1795,0x4017db,0x401795,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
+0x17db,0x17a9,0x4017db,0x4017a9,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
+0x9153,0x3cf0,0x409153,0x403cf0,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf,/home/ayrton/amp/ibresolver/tests/x86-64/fn_ptr-static.elf
