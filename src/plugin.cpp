@@ -180,6 +180,7 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
 
 int loading_sym_failed(const char *sym, const char *backend_name) {
     cout << "Could not load `" << sym << "` function from backend " << backend_name << endl;
+    cout << dlerror() << endl;
     return -4;
 }
 
@@ -207,7 +208,8 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
     if (backend_provided) {
         backend_handle = dlopen(argv[1], RTLD_LAZY | RTLD_DEEPBIND);
         if (!backend_handle) {
-            cout << "Could not open DSO for alternate disassembly backend" << endl;
+            cout << "Could not open shared library for alternate disassembly backend" << endl;
+            cout << dlerror() << endl;
             return -3;
         }
         arch_supported_fn_name = "arch_supported";
@@ -229,7 +231,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         return -5;
     }
 
-    outfile << "callsite offset, dest offset, callsite vaddr, dest vaddr, callsite image, dest image" << endl;
+    outfile << "callsite offset,dest offset,callsite vaddr,dest vaddr,callsite ELF,dest ELF" << endl;
     // Register a callback for each time a block is translated
     qemu_plugin_register_vcpu_tb_trans_cb(id, block_trans_handler);
 

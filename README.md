@@ -1,6 +1,6 @@
 # Overview
 
-This is a QEMU user-mode plugin for resolving indirect branches. The plugin supports various architectures and uses a configurable disassembly backend to detect indirect jumps and calls. When the specified branches are taken, the callsite and destination are written to a .csv.
+This is a QEMU user-mode plugin for resolving indirect branches. The plugin supports various architectures and uses a configurable disassembly backend to detect indirect jumps and calls. When a branch found by the backend is taken, the callsite and destination are written to a .csv.
 
 # Building and prerequisites
 
@@ -23,7 +23,8 @@ $ cd build
 # To see available targets
 $ ../configure --help
 
-# To reduce compilation times build only the necessary targets
+# To reduce compilation times specify only the necessary targets as a comma-separated list.
+# Built-in backends support `arm-linux-user` and `x86_64-linux-user`.
 $ ../configure --target-list="$TARGETS"
 
 # Or ninja
@@ -32,7 +33,7 @@ $ make
 
 ## Building the plugin
 
-This plugin detects indirect branches with either a built-in backend or a custom one provided at runtime. By default `make` builds the plugin with a simple backend which only detects `blx` on 32-bit ARM and `callq` on x86-64. The other option is to use [binaryninja](https://binary.ninja/) to identify indirect branches.
+This plugin detects indirect branches with either a built-in disassembly backend or a custom one provided at runtime. By default `make` builds the plugin with the simple backend which only detects `blx` on 32-bit ARM and `callq` on x86-64. The other build-time option is to use [binaryninja](https://binary.ninja/) to identify indirect branches. Custom backends are specified as command line arguments when starting QEMU and can be used with either build option.
 
 ### Building with binaryninja
 
@@ -45,27 +46,29 @@ $ git submodule update
 Then [build the binaryninja API](https://github.com/Vector35/binaryninja-api#build-instructions) and build this plugin with
 
 ```
-make BACKEND=binja BINJA_INSTALL_DIR=/path/to/binaryninja/installation/
+make BACKEND=binja BINJA_INSTALL_DIR=/path/to/binaryninja/installation/ BINJA_API_DIR=/path/to/binaryninja/API/build/out/
 ```
 
-Note that `BINJA_INSTALL_DIR` is the path to binaryninja not the API.
+where `BINJA_INSTALL_DIR` is the path to the binaryninja installation which should have `libbinaryninjacore.so` and `BINJA_API_DIR` is the path to the binaryninja API build output directory which should have `libbinaryninjaapi.a`.
 
 ### Building custom backends
 
-Custom backends can be used by [building shared libraries](https://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html#AEN95) that define the following functions
+Custom backends can be made by [building shared libraries](https://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html#AEN95) that define the following functions
 ```
-// Checks if the backend supports the given architecture. Here `arch_name` is the suffix of the QEMU build (e.g. qemu-x86_64, qemu-arm).
+// Checks if the backend supports the given architecture. Here `arch_name` is the suffix of the QEMU build (e.g. "x86_64" for qemu-x86_64, "arm" for qemu-arm).
 extern "C" bool arch_supported(const char *arch_name);
 
 // Checks if the given instruction is an indirect branch.
 extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
 ```
 
-Note that the name of the shared library should be prefixed by "lib" and have the extension ".so".
+Note that the name of the shared library should be prefixed by "lib" and have the file extension ".so". Building shared libraries requires passing the `-shared` flag to the compiler and possibly `-l`, `-L`, or `-Wl,-rpath=` depending on what it links against (e.g. if using C++ pass `-lstdc++`). See the link above for more details.
+
+For an example of a custom backend see `backend_demo.c` which is a C version of the simple backend and additionally prints to stdout when a `blx` or `callq` instructions are found. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
 
 # Usage
 
-To run QEMU with the plugin using the built-in backend do
+To run QEMU with the plugin using the built-in backend use
 
 ```
 $ /path/to/qemu -plugin ./libibresolver.so,arg="$OUTPUT_CSV" $BINARY
@@ -73,19 +76,19 @@ $ /path/to/qemu -plugin ./libibresolver.so,arg="$OUTPUT_CSV" $BINARY
 
 Note that the argument to the `-plugin` flag is a comma-separated list with no spaces and the plugin must be a path (i.e. QEMU won't accept just `libibresolver.so`). Running QEMU on non-native binaries may require passing in the `-L` flag (e.g. `/path/to/qemu-arm -L /usr/arm-linux-gnueabihf/ -plugin ...`).
 
-To use a custom backend add the path to the shared library as the second plugin argument. For example to use a shared library named `libbackend.so` as the backend use
+To use a custom backend add the path to the shared library as the second plugin argument. For example to use a shared library named `libdemo.so` as the backend use
 ```
-$ /path/to/qemu -plugin ./libiresolver.so,arg="$OUTPUT_CSV",arg="./libbackend.so" $BINARY
+$ /path/to/qemu -plugin ./libiresolver.so,arg="$OUTPUT_CSV",arg="./libdemo.so" $BINARY
 ```
 
 # Output format
 
 The output is a csv formatted as follows
 ```
-callsite offset,callsite image,destination offset,destination image
+callsite offset,dest offset,callsite vaddr,dest vaddr,callsite ELF,dest ELF
 ```
 
-Where each line has the callsite and destination of each indirect branch. Instead of outputting the virtual addresses (vaddrs) of callsites and destinations, this plugin translates those vaddrs to offsets in the corresponding ELFs. The output can then easily be interpreted by running `objdump` on one of the ELFs in the second or fourth columns and looking for the corresponding offset address.
+where each line has the callsite and destination of every indirect branch in the order they were taken. The columns labeled `offset` show the callsite and destination addresses as offsets into their corresponding ELF files. The columns labeled `vaddr` shows the callsite and destination as virtual addresses in the emulated process. To interpret the results (i.e. see what instructions are at/around the callsite and destination) use `objdump -d -F $BINARY` and search for the file offset of interest. For statically-compiled binaries `-F` is not strictly necessary since the vaddrs in the output will always correspond to the addresses shown on the left-hand side with just `objdump -d`. For dynamically-linked executables the file offset will often but not always correspond to the addresses shown in objdump which is why the `-F` may be required.
 
 # Supported architectures
 
