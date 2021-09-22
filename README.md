@@ -1,4 +1,4 @@
-2c5524d30bd3c89e13d46ed9f3bcc18d65c311222c5524d30bd3c89e13d46ed9f3bcc18d65c31122# Overview
+# Overview
 
 This is a QEMU user-mode plugin for resolving indirect branches. The plugin supports various architectures and uses a configurable disassembly backend to detect indirect jumps and calls. When a branch found by the backend is taken, the callsite and destination are written to a .csv.
 
