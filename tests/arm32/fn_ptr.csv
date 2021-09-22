@@ -1,4 +1,4 @@
-callsite offset, dest offset, callsite vaddr, dest vaddr, callsite image, dest image
+callsite offset,dest offset,callsite vaddr,dest vaddr,callsite ELF,dest ELF
 0x197f8,0x1e3c,0x3f7e17f8,0x3f7c9e3c,/usr/arm-linux-gnueabihf/lib/ld-2.33.so,/usr/arm-linux-gnueabihf/lib/ld-2.33.so
 0xc3dc,0x19db8,0x3f7d43dc,0x3f7e1db8,/usr/arm-linux-gnueabihf/lib/ld-2.33.so,/usr/arm-linux-gnueabihf/lib/ld-2.33.so
 0xc2e0,0x960,0x3f7d42e0,0x3f7c8960,/usr/arm-linux-gnueabihf/lib/ld-2.33.so,/usr/arm-linux-gnueabihf/lib/ld-2.33.so

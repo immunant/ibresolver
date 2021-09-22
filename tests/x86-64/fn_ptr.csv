@@ -1,4 +1,4 @@
-callsite offset, dest offset, callsite vaddr, dest vaddr, callsite image, dest image
+callsite offset,dest offset,callsite vaddr,dest vaddr,callsite ELF,dest ELF
 0x1c555,0x2540,0x4001822555,0x4001808540,/usr/lib/ld-2.33.so,/usr/lib/ld-2.33.so
 0x1d5ac,0xe250,0x40018235ac,0x4001814250,/usr/lib/ld-2.33.so,/usr/lib/ld-2.33.so
 0x1d5ac,0xe250,0x40018235ac,0x4001814250,/usr/lib/ld-2.33.so,/usr/lib/ld-2.33.so
