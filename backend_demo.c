@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+// Include this header to use the built-in backend functions
+#include <builtin_backend.h>
 
 typedef enum arch_t {
     arm,
@@ -12,6 +14,10 @@ typedef enum arch_t {
 static arch_t arch = unknown;
 
 extern bool arch_supported(const char *arch_name) {
+    // Make sure to initialize the built-in backend if it's going to be used as a fallback
+    if (!arch_supported_default_impl(arch_name)) {
+        return false;
+    }
     if (!strcmp(arch_name, "arm")) {
         arch = arm;
         return true;
@@ -64,5 +70,7 @@ extern bool is_indirect_branch(uint8_t *insn_data, size_t insn_size) {
             }
         }
     }
-    return false;
+    // If we can't tell if the instruction is an indirect branch, let's use the
+    // built-in backend as a fallback
+    return is_indirect_branch_default_impl(insn_data, insn_size);
 }

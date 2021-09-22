@@ -1,5 +1,5 @@
 extern "C" {
-#include "qemu/qemu-plugin.h"
+#include <qemu/qemu-plugin.h>
 }
 
 #include <dlfcn.h>

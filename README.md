@@ -55,16 +55,26 @@ where `BINJA_INSTALL_DIR` is the path to the binaryninja installation which shou
 
 Custom backends can be made by [building shared libraries](https://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html#AEN95) that define the following functions
 ```
-// Checks if the backend supports the given architecture. Here `arch_name` is the suffix of the QEMU build (e.g. "x86_64" for qemu-x86_64, "arm" for qemu-arm).
+// Checks if the backend supports the given architecture. This function is only called when
+// initializing the plugin. Here `arch_name` is the suffix of the QEMU build (e.g. "x86_64" for
+// qemu-x86_64, "arm" for qemu-arm).
 extern "C" bool arch_supported(const char *arch_name);
 
-// Checks if the given instruction is an indirect branch.
+// Checks if the given instruction is an indirect branch. This is only called each time QEMU
+// translates an instruction, not every time it's executed.
 extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
 ```
 
-Note that the name of the shared library should be prefixed by "lib" and have the file extension ".so". Building shared libraries requires passing the `-shared` flag to the compiler and possibly `-l`, `-L`, or `-Wl,-rpath=` depending on what it links against (e.g. if using C++ pass `-lstdc++`). See the link above for more details.
+Note that the name of the shared library should be prefixed by "lib" and have the file extension ".so". Building shared libraries requires passing the `-shared` and `-fPIC` flags to the compiler and possibly `-l`, `-L`, or `-Wl,-rpath=` depending on what it links against (e.g. if using C++ pass `-lstdc++`). See the link above for more details.
 
-For an example of a custom backend see `backend_demo.c` which is a C version of the simple backend that additionally prints to stdout when `blx` or `callq` instructions are found. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
+Custom backends may also fallback to the built-in backends by including [`include/builtin_backend.h`](include/builtin_backend.h) and linking against `libibresolver.so`. The build process for this would typically look like this
+```
+$ gcc my_source.c -shared -fPIC -I /path/to/this/repo/include/ -libresolver -L /path/to/this/repo/ -Wl,-rpath=/path/to/this/repo/ -o libmybackend.so
+```
+
+where the `-l`, `-L` and `-Wl,-rpath=` flags are used to link against the branch resolver plugin to get access to the built-in backends.
+
+For an example of a custom backend see `backend_demo.c`. This only finds indirect calls (like the simple backend), prints to stdout if a call is found and falls back to the built-in backend for all other instructions. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
 
 # Usage
 
