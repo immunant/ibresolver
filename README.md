@@ -74,7 +74,7 @@ $ gcc my_source.c -shared -fPIC -I /path/to/this/repo/include/ -libresolver -L /
 
 where the `-l`, `-L` and `-Wl,-rpath=` flags are used to link against the branch resolver plugin to get access to the built-in backends.
 
-For an example of a custom backend see `backend_demo.c`. This only finds indirect calls (like the simple backend), prints to stdout if a call is found and falls back to the built-in backend for all other instructions. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
+For an example of a custom backend see [`backend_demo.c`](backend_demo.c). This only finds indirect calls (like the simple backend), prints to stdout if a call is found and falls back to the built-in backend for all other instructions. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
 
 # Usage
 
