@@ -1,4 +1,4 @@
-# Overview
+2c5524d30bd3c89e13d46ed9f3bcc18d65c311222c5524d30bd3c89e13d46ed9f3bcc18d65c31122# Overview
 
 This is a QEMU user-mode plugin for resolving indirect branches. The plugin supports various architectures and uses a configurable disassembly backend to detect indirect jumps and calls. When a branch found by the backend is taken, the callsite and destination are written to a .csv.
 
@@ -64,7 +64,7 @@ extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
 
 Note that the name of the shared library should be prefixed by "lib" and have the file extension ".so". Building shared libraries requires passing the `-shared` flag to the compiler and possibly `-l`, `-L`, or `-Wl,-rpath=` depending on what it links against (e.g. if using C++ pass `-lstdc++`). See the link above for more details.
 
-For an example of a custom backend see `backend_demo.c` which is a C version of the simple backend and additionally prints to stdout when a `blx` or `callq` instructions are found. To build this backend use `make demo` and pass the resulting `libdemo.so` to QEMU as described below.
+For an example of a custom backend see `backend_demo.c` which is a C version of the simple backend that additionally prints to stdout when `blx` or `callq` instructions are found. To build this backend use `make demo` and pass the resulting `libdemo.so` as an argument to QEMU as described below.
 
 # Usage
 
