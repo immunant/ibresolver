@@ -170,6 +170,11 @@ static void block_trans_handler(qemu_plugin_id_t id, struct qemu_plugin_tb *tb) 
                                                        QEMU_PLUGIN_CB_NO_REGS, (void *)insn_addr);
                 if (i + 1 < num_insns) {
                     struct qemu_plugin_insn *next_insn = qemu_plugin_tb_get_insn(tb, i + 1);
+                    uint8_t *next_data = (uint8_t *)qemu_plugin_insn_data(next_insn);
+                    size_t next_size = qemu_plugin_insn_size(next_insn);
+                    if (is_indirect_branch(next_data, next_size)) {
+                        cout << "WARNING: Consecutive indirect branches are currently not handled properly" << endl;
+                    }
                     qemu_plugin_register_vcpu_insn_exec_cb(next_insn, branch_skipped,
                                                            QEMU_PLUGIN_CB_NO_REGS, NULL);
                 }
