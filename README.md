@@ -58,11 +58,11 @@ Custom backends can be made by [building shared libraries](https://tldp.org/HOWT
 // Checks if the backend supports the given architecture. This function is only called when
 // initializing the plugin. Here `arch_name` is the suffix of the QEMU build (e.g. "x86_64" for
 // qemu-x86_64, "arm" for qemu-arm).
-extern "C" bool arch_supported(const char *arch_name);
+extern bool arch_supported(const char *arch_name);
 
 // Checks if the given instruction is an indirect branch. This is only called each time QEMU
 // translates an instruction, not every time it's executed.
-extern "C" bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
+extern bool is_indirect_branch(uint8_t *insn_data, size_t insn_size);
 ```
 
 Note that the name of the shared library should be prefixed by "lib" and have the file extension ".so". Building shared libraries requires passing the `-shared` and `-fPIC` flags to the compiler and possibly `-l`, `-L`, or `-Wl,-rpath=` depending on what it links against (e.g. if using C++ pass `-lstdc++`). See the link above for more details.

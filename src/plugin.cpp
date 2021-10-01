@@ -32,16 +32,16 @@ typedef struct image_offset {
     size_t image_name_pos;
 } image_offset;
 
-// Check if the given `emulator_vaddr` falls within the loaded segment described
+// Check if the given `guest_vaddr` falls within the loaded segment described
 // by the `maps_entry` which is a line read from /proc/self/maps.
-static optional<image_offset> emulator_vaddr_to_offset(const string_view maps_entry, uint64_t emulator_vaddr) {
+static optional<image_offset> guest_vaddr_to_offset(const string_view maps_entry, uint64_t guest_vaddr) {
     uint32_t name_pos;
     uint64_t start, end, file_load_offset;
 
     // QEMU may add a constant offset to the emulated system's memory. Adding
-    // guest base to emulator_vaddr converts it back to a "real" vaddr that can
+    // guest base to guest_vaddr converts it back to a "host" vaddr that can
     // be compared against the host system's vaddrs in /proc/self/maps
-    uint64_t real_vaddr = emulator_vaddr + qemu_plugin_guest_base();
+    uint64_t host_vaddr = guest_vaddr + qemu_plugin_guest_base();
 
     // Parse the /proc/self/maps line. Stores the start and end vaddrs of the
     // loaded segment, the offset into the file the segment was loaded from
@@ -49,11 +49,11 @@ static optional<image_offset> emulator_vaddr_to_offset(const string_view maps_en
     // before the name of the ELF file (`name_pos`).
     sscanf(maps_entry.data(), "%lx-%lx %*c%*c%*c%*c %lx %*lx:%*lx %*lu %n", &start, &end, &file_load_offset,
            &name_pos);
-    // Check if the addr is within the segment. Comparing real_vaddr with the
+    // Check if the addr is within the segment. Comparing host_vaddr with the
     // maps vaddrs is ok since it's also a system vaddr
-    if ((start <= real_vaddr) && (real_vaddr <= end)) {
+    if ((start <= host_vaddr) && (host_vaddr <= end)) {
         // Get the address as an offset into the loaded segment
-        uint64_t segment_offset = real_vaddr - start;
+        uint64_t segment_offset = host_vaddr - start;
         // Turn the segment offset into an offset into the file
         uint64_t file_offset = segment_offset + file_load_offset;
         struct image_offset offset = {
@@ -76,7 +76,7 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
     // For each entry in /proc/self/maps
     while (getline(maps, line)) {
         if (!callsite.has_value()) {
-            callsite = emulator_vaddr_to_offset(line, callsite_vaddr);
+            callsite = guest_vaddr_to_offset(line, callsite_vaddr);
             if (callsite.has_value()) {
                 // Copy name since `line` gets reused in this loop
                 char *image_name = line.data() + callsite->image_name_pos;
@@ -84,7 +84,7 @@ static void mark_indirect_branch(uint64_t callsite_vaddr, uint64_t dst_vaddr) {
             }
         }
         if (!dst.has_value()) {
-            dst = emulator_vaddr_to_offset(line, dst_vaddr);
+            dst = guest_vaddr_to_offset(line, dst_vaddr);
             if (dst.has_value()) {
                 // Copy name since `line` gets reused in this loop
                 char *image_name = line.data() + dst->image_name_pos;
