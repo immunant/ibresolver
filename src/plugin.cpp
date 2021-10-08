@@ -193,14 +193,16 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
                                char **argv) {
     if (argc < 1) {
         cout << "Usage: /path/to/qemu \\" << endl;
-        cout << "\t-plugin /path/to/libibresolver.so,arg=\"output.csv\",arg=\"/path/to/disassembly/libbackend.so\" \\" << endl;
+        cout << "\t-plugin /path/to/libibresolver.so,output=\"output.csv\",backend=\"/path/to/disassembly/libbackend.so\" \\" << endl;
         cout << "\t$BINARY" << endl;
         return -1;
     }
 
-    outfile = ofstream(argv[0]);
+    const char *output_arg = argv[0] + sizeof("output=") - 1;
+
+    outfile = ofstream(output_arg);
     if (outfile.fail()) {
-        cout << "Could not open file " << argv[0] << endl;
+        cout << "Could not open file " << output_arg << endl;
         return -2;
     }
 
@@ -211,7 +213,8 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
     const char *backend_name = BACKEND_NAME;
 
     if (backend_provided) {
-        backend_handle = dlopen(argv[1], RTLD_LAZY | RTLD_DEEPBIND);
+        const char *backend_arg = argv[1] + sizeof("backend=") - 1;
+        backend_handle = dlopen(backend_arg, RTLD_LAZY | RTLD_DEEPBIND);
         if (!backend_handle) {
             cout << "Could not open shared library for alternate disassembly backend" << endl;
             cout << dlerror() << endl;
@@ -219,7 +222,7 @@ extern int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int
         }
         arch_supported_fn_name = "arch_supported";
         is_indirect_branch_fn_name = "is_indirect_branch";
-        backend_name = argv[1];
+        backend_name = backend_arg;
     }
     cout << "Using the " << backend_name << " disassembly backend" << endl;
     arch_supported = (arch_supported_fn)dlsym(backend_handle, arch_supported_fn_name);

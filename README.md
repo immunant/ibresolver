@@ -81,14 +81,14 @@ For an example of a custom backend see [`backend_demo.c`](backend_demo.c). This 
 To run QEMU with the plugin using the built-in backend use
 
 ```
-$ /path/to/qemu -plugin ./libibresolver.so,arg="$OUTPUT_CSV" $BINARY
+$ /path/to/qemu -plugin ./libibresolver.so,output="$OUTPUT_CSV" $BINARY
 ```
 
 Note that the argument to the `-plugin` flag is a comma-separated list with no spaces and the plugin must be a path (i.e. QEMU won't accept just `libibresolver.so`). Running QEMU on non-native binaries may require passing in the `-L` flag (e.g. `/path/to/qemu-arm -L /usr/arm-linux-gnueabihf/ -plugin ...`).
 
 To use a custom backend add the path to the shared library as the second plugin argument. For example to use a shared library named `libdemo.so` as the backend use
 ```
-$ /path/to/qemu -plugin ./libiresolver.so,arg="$OUTPUT_CSV",arg="./libdemo.so" $BINARY
+$ /path/to/qemu -plugin ./libiresolver.so,output="$OUTPUT_CSV",backend="./libdemo.so" $BINARY
 ```
 
 # Output format
