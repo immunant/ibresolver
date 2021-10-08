@@ -98,7 +98,7 @@ The output is a csv formatted as follows
 callsite offset,dest offset,callsite vaddr,dest vaddr,callsite ELF,dest ELF
 ```
 
-where each line has the callsite and destination of every indirect branch in the order they were taken. The columns labeled `offset` show the callsite and destination addresses as offsets into their corresponding ELF files. The columns labeled `vaddr` shows the callsite and destination as virtual addresses in the emulated process. To interpret the results (i.e. see what instructions are at/around the callsite and destination) use `objdump -d -F $BINARY` and search for the file offset of interest. For statically-compiled binaries `-F` is not strictly necessary since the vaddrs in the output will always correspond to the addresses shown on the left-hand side with just `objdump -d`. For dynamically-linked executables the file offset will often but not always correspond to the addresses shown in objdump which is why the `-F` may be required.
+where each line has the callsite and destination of every indirect branch in the order they were taken. The columns labeled `offset` show the callsite and destination addresses as offsets into their corresponding ELF files. The columns labeled `vaddr` shows the callsite and destination as virtual addresses in the emulated process. To interpret the results (i.e. see what instructions are at/around the callsite and destination) use `objdump -d -F $BINARY` and search for the file offset of interest. The `-F` is not strictly necessary since the vaddrs in the output may correspond to the addresses depending on how the program is linked.
 
 # Supported architectures
 
