@@ -1,10 +1,10 @@
 diff --git a/include/qemu/qemu-plugin.h b/include/qemu/qemu-plugin.h
-index e6e815abc5..674dbd5c3c 100644
+index 5f1017201f..20fa39cf16 100644
 --- a/include/qemu/qemu-plugin.h
 +++ b/include/qemu/qemu-plugin.h
-@@ -577,4 +577,11 @@ int qemu_plugin_n_max_vcpus(void);
+@@ -590,4 +590,11 @@ void qemu_plugin_outs(const char *string);
   */
- void qemu_plugin_outs(const char *string);
+ bool qemu_plugin_bool_parse(const char *name, const char *val, bool *ret);
  
 +/**
 + * Returns the address space base of the emulated process
@@ -15,12 +15,12 @@ index e6e815abc5..674dbd5c3c 100644
 +
  #endif /* QEMU_PLUGIN_API_H */
 diff --git a/plugins/api.c b/plugins/api.c
-index 2d521e6ba8..b02acbf1f5 100644
+index b143b09ce9..37fefbe456 100644
 --- a/plugins/api.c
 +++ b/plugins/api.c
-@@ -383,3 +383,10 @@ void qemu_plugin_outs(const char *string)
+@@ -391,3 +391,10 @@ bool qemu_plugin_bool_parse(const char *name, const char *value, bool *ret)
  {
-     qemu_log_mask(CPU_LOG_PLUGIN, "%s", string);
+     return name && value && qapi_bool_parse(name, value, ret, NULL);
  }
 +
 +/*
@@ -29,3 +29,15 @@ index 2d521e6ba8..b02acbf1f5 100644
 +uintptr_t qemu_plugin_guest_base(void) {
 +    return guest_base;
 +}
+diff --git a/plugins/qemu-plugins.symbols b/plugins/qemu-plugins.symbols
+index 67b309ea2a..2a42f52e91 100644
+--- a/plugins/qemu-plugins.symbols
++++ b/plugins/qemu-plugins.symbols
+@@ -1,6 +1,7 @@
+ {
+   qemu_plugin_bool_parse;
+   qemu_plugin_get_hwaddr;
++  qemu_plugin_guest_base;
+   qemu_plugin_hwaddr_is_io;
+   qemu_plugin_insn_data;
+   qemu_plugin_insn_disas;

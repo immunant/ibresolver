@@ -12,7 +12,7 @@ $ git clone https://github.com/qemu/qemu
 $ cd qemu
 
 # The specific commit doesn't matter too much, but the patch has been tested with this one.
-$ git checkout ecf2706e271fa705621f0d5ad9517fe15a22bf22
+$ git checkout 15a0578903dc0d612e63f542d159fe1f3fb8a17a
 
 $ git apply /path/to/this/repo's/qemu.patch
 
