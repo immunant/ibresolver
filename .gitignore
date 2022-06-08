@@ -1,6 +1,5 @@
 *.o
 *.so
-*.csv
 *.txt
 demo/*
 *.core
