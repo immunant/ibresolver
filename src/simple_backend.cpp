@@ -15,12 +15,20 @@ extern "C" bool arch_supported_default_impl(const char *arch_name) {
 
 extern "C" bool is_indirect_branch_default_impl(uint8_t *insn_data, size_t insn_size) {
     if (!arch.compare("arm")) {
-        // Handles blx rn
-        const uint32_t blx_variable_bits = 0xf000000f;
-        const uint32_t blx_constant_bits = 0x012fff30;
-        // Arbitrarily set all variable bits in the blx instruction before comparing with the input instruction
-        const uint32_t blx = blx_constant_bits | blx_variable_bits;
         if (insn_size == 4) {
+            // Check for the A1 encoding (ARM) of blx with a register argument
+            // TODO: This function should track ARM/THUMB state rather than assume that all 4-byte
+            // instructions are in ARM mode. If the A1 encoding of blx with a register argument
+            // happens to match a THUMB instruction it'll get marked as a potential indirect branch.
+            // The incorrectly marked instruction won't give incorrect results since QEMU will just
+            // execute the next instruction and the plugin will mark it as an untaken indirect
+            // branch which is omitted in the output. It may cause the plugin to print spurious
+            // warnings about consecutive indirect branches not being handled properly though.
+            const uint32_t blx_variable_bits = 0xf000000f;
+            const uint32_t blx_constant_bits = 0x012fff30;
+            // Arbitrarily set all variable bits in the blx instruction before comparing with the
+            // input instruction
+            const uint32_t blx = blx_constant_bits | blx_variable_bits;
             uint32_t b0 = insn_data[0];
             uint32_t b1 = insn_data[1];
             uint32_t b2 = insn_data[2];
@@ -29,6 +37,19 @@ extern "C" bool is_indirect_branch_default_impl(uint8_t *insn_data, size_t insn_
             // Set all variable bits in the instruction
             word |= blx_variable_bits;
             if (word == blx) {
+                return true;
+            }
+        } else if (insn_size == 2) {
+            // Check for the T1 encoding (THUMB) of blx with a register argument
+            const uint16_t blx_variable_bits = 0x0078;
+            const uint16_t blx_constant_bits = 0x4780;
+            const uint16_t blx = blx_constant_bits | blx_variable_bits;
+            uint16_t b0 = insn_data[0];
+            uint16_t b1 = insn_data[1];
+            uint16_t half_word = b0 | (b1 << 8);
+            // Set all variable bits in the instruction
+            half_word |= blx_variable_bits;
+            if (half_word == blx) {
                 return true;
             }
         }

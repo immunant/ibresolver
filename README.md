@@ -33,7 +33,7 @@ $ make
 
 ## Building the plugin
 
-This plugin detects indirect branches with either a built-in disassembly backend or a custom one provided at runtime. By default `make` builds the plugin with the simple backend which only detects `blx` on 32-bit ARM and `callq` on x86-64. The other build-time option is to use [binaryninja](https://binary.ninja/) to identify indirect branches. Custom backends are specified as command line arguments when starting QEMU and can be used with either build option.
+This plugin detects indirect branches with either a built-in disassembly backend or a custom one provided at runtime. By default `make` builds the plugin with the simple backend which only detects `blx` with a register argument on 32-bit ARM (along with the THUMB encoding) and `callq` on x86-64. The other build-time option is to use [binaryninja](https://binary.ninja/) to identify indirect branches. Custom backends are specified as command line arguments when starting QEMU and can be used with either build option.
 
 ### Building with binaryninja
 
