@@ -103,3 +103,7 @@ where each line has the callsite and destination of every indirect branch in the
 # Supported architectures
 
 This plugin currently works on x86-64 and arm32 binaries. Support for other architectures may be added through custom disassembly backends, though this has not been tested yet. Architectures with jump delay slots (e.g. MIPS, SPARC), multithreaded programs and JITs are currently not expected to work.
+
+# Acknowledgements
+
+This material is based upon work supported by the Defense Advanced Research Projects Agency (DARPA) and Naval Information Warfare Center Pacific (NIWC Pacific) under Contract Number N66001-20-C-4027. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the DARPA & NIWC Pacific.
